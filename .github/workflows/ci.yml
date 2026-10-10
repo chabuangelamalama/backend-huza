@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests and coverage
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "sqlite://"
+      JWT_SECRET: "test-only-signing-key-do-not-use-in-production"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.13"
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install dependencies from pyproject.toml
+        run: |
+          uv venv
+          uv pip install -r pyproject.toml --group dev
+      # Pytest fails if no tests are collected; do not silently skip this step.
+      - name: Run tests with coverage
+        run: uv run --no-sync pytest --cov --cov-report=term-missing

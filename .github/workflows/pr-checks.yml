@@ -1,0 +1,208 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  requirements:
+    name: PR requirements
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      results: ${{ steps.validate.outputs.results }}
+      fingerprint: ${{ steps.validate.outputs.fingerprint }}
+    steps:
+      - name: Validate the submission
+        id: validate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { createHash } = require('node:crypto');
+            const { owner, repo } = context.repo;
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number: context.payload.pull_request.number,
+            });
+            if (pr.state !== 'open' || pr.head.sha !== context.payload.pull_request.head.sha) {
+              core.setFailed('This PR run is outdated. Use the checks for the latest commit.');
+              return;
+            }
+
+            const labels = pr.labels.map(label => label.name).sort();
+            const fingerprint = createHash('sha256').update(JSON.stringify([
+              pr.head.sha, pr.base.ref, pr.title, pr.body || '', labels,
+            ])).digest('hex');
+            core.setOutput('fingerprint', fingerprint);
+            const body = (pr.body || '').replace(/<!--[\s\S]*?-->/g, '');
+            const section = name => {
+              const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const match = body.match(new RegExp(
+                `^#{1,3}\\s+${escaped}\\s*:?\\s*\\n([\\s\\S]*?)(?=^#{1,3}\\s|$(?![\\s\\S]))`, 'im',
+              ));
+              return match ? match[1].trim() : '';
+            };
+            const exception = name => {
+              const reason = section('Exceptions').match(new RegExp(`^${name}:\\s*(.+)$`, 'im'));
+              return reason && reason[1].trim().length >= 20;
+            };
+            const results = [];
+            const check = (name, ok, hint) => results.push({
+              name, status: ok ? 'pass' : 'fail', hint: ok ? '' : hint,
+            });
+            const title = pr.title.trim();
+            const genericTitle = /^(wip|update|fix|changes?|test|misc)\b.{0,15}$/i.test(title)
+              || /^update \S+\.\w+$/i.test(title);
+            check('Title', title.length >= 10 && !genericTitle,
+              'Use a descriptive title of at least 10 characters.');
+            const description = section('Description').replace(/^Fixes #.*$/gm, '');
+            check('Description', description.replace(/[*\-\s]/g, '').length >= 30,
+              'Explain what changed and why in the Description section.');
+            check('Testing evidence', section('How Has This Been Tested?').replace(/[*\-\s]/g, '').length >= 20,
+              'Describe your checks and commands in How Has This Been Tested?.');
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            const testFile = name => /(^|\/)(test_[^/]+\.py|[^/]+_test\.py)$/i.test(name);
+            const testSupport = name => testFile(name) || /(^|\/)conftest\.py$/i.test(name);
+            const sourceFiles = files.filter(file => file.filename.endsWith('.py') && !testSupport(file.filename));
+            const updatedTests = files.some(file => file.status !== 'removed' && testFile(file.filename));
+            if (sourceFiles.length) {
+              check('Tests updated', updatedTests || (labels.includes('no-tests-needed') && exception('tests')),
+                'Update tests for Python changes, or use no-tests-needed with a tests: reason in Exceptions (at least 20 characters).');
+            } else {
+              results.push({ name: 'Tests updated', status: 'skip', hint: 'No application Python files changed.' });
+            }
+            core.setOutput('results', JSON.stringify(results));
+            await core.summary.addHeading('PR requirements').addTable([
+              [{ data: 'Check', header: true }, { data: 'Result', header: true }, { data: 'Next step', header: true }],
+              ...results.map(result => [result.name, result.status, result.hint]),
+            ]).write();
+            const failed = results.filter(result => result.status === 'fail');
+            if (failed.length) core.setFailed(`Missing: ${failed.map(result => result.name).join(', ')}`);
+
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.13"
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install dependencies from pyproject.toml
+        run: |
+          uv venv
+          uv pip install -r pyproject.toml --group dev
+      - name: Lint
+        run: uv run --no-sync ruff check .
+      - name: Check formatting
+        run: uv run --no-sync ruff format --check .
+
+  ci:
+    name: CI
+    needs: [requirements, lint]
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  gate:
+    name: PR gate
+    if: always()
+    needs: [requirements, lint, ci]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require every stage to succeed
+        uses: actions/github-script@v7
+        env:
+          STAGE_RESULTS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const stages = JSON.parse(process.env.STAGE_RESULTS);
+            const failed = Object.entries(stages).filter(([, stage]) => stage.result !== 'success');
+            if (failed.length) {
+              core.setFailed(`PR is not ready: ${failed.map(([name, stage]) => `${name} (${stage.result})`).join(', ')}`);
+            } else {
+              core.info('Requirements, lint, and tests passed. This PR is ready for peer review.');
+            }
+
+  feedback:
+    name: PR feedback
+    # Fork tokens cannot update PRs. The required gate still runs for forks.
+    if: >-
+      always() && !cancelled() &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    needs: [requirements, lint, ci, gate]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      # This job never checks out or executes PR code.
+      - name: Update checklist and review readiness
+        uses: actions/github-script@v7
+        env:
+          STAGE_RESULTS: ${{ toJSON(needs) }}
+          REQUIREMENTS: ${{ needs.requirements.outputs.results }}
+          EXPECTED_FINGERPRINT: ${{ needs.requirements.outputs.fingerprint }}
+        with:
+          script: |
+            const { createHash } = require('node:crypto');
+            const { owner, repo } = context.repo;
+            const stages = JSON.parse(process.env.STAGE_RESULTS);
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number: context.payload.pull_request.number,
+            });
+            const fingerprint = createHash('sha256').update(JSON.stringify([
+              pr.head.sha, pr.base.ref, pr.title, pr.body || '', pr.labels.map(label => label.name).sort(),
+            ])).digest('hex');
+            if (pr.state !== 'open' || fingerprint !== process.env.EXPECTED_FINGERPRINT) {
+              core.info('PR changed while checks ran. Leaving feedback to its latest run.');
+              return;
+            }
+
+            const ready = stages.gate.result === 'success';
+            const requirements = JSON.parse(process.env.REQUIREMENTS || '[]');
+            const icons = { pass: '✅', fail: '❌', skip: '➖' };
+            const rows = requirements.map(result => `| ${icons[result.status]} ${result.name} | ${result.status} | ${result.hint} |`);
+            for (const [id, name] of [['lint', 'Lint and format'], ['ci', 'Tests and coverage']]) {
+              const result = stages[id].result;
+              rows.push(`| ${result === 'success' ? '✅' : '❌'} ${name} | ${result} | See the workflow logs. |`);
+            }
+            let note = ready
+              ? 'All checks passed. Ask a peer to review before merging.'
+              : 'Fix the failed checks and push again, or update the PR description. Peer review follows a passing PR gate.';
+            if (ready && pr.draft) {
+              await github.graphql(
+                'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }',
+                { id: pr.node_id },
+              );
+              note = 'All checks passed, so this draft is now ready for peer review. A peer must approve before merging.';
+            }
+            const marker = '<!-- pr-checks-summary -->';
+            const body = `${marker}\n### PR checklist ${ready ? '✅' : '❌'}\n\n| Check | Result | Next step |\n|---|---|---|\n${rows.join('\n')}\n\n${note}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: pr.number, per_page: 100,
+            });
+            const existing = comments.find(comment => comment.user?.login === 'github-actions[bot]'
+              && comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+            }
