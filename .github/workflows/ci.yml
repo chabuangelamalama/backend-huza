@@ -9,7 +9,7 @@ permissions:
 jobs:
   tests:
     name: Tests and coverage
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, classroom-ci]
     env:
       DATABASE_URL: "sqlite://"
       JWT_SECRET: "test-only-signing-key-do-not-use-in-production"
