@@ -15,7 +15,7 @@ concurrency:
 jobs:
   requirements:
     name: PR requirements
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, classroom-ci]
     permissions:
       pull-requests: read
     outputs:
@@ -92,7 +92,7 @@ jobs:
 
   lint:
     name: Lint and format
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, classroom-ci]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,7 +125,7 @@ jobs:
     name: PR gate
     if: always()
     needs: [requirements, lint, ci]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, classroom-ci]
     permissions: {}
     steps:
       - name: Require every stage to succeed
@@ -149,7 +149,7 @@ jobs:
       always() && !cancelled() &&
       github.event.pull_request.head.repo.full_name == github.repository
     needs: [requirements, lint, ci, gate]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, classroom-ci]
     permissions:
       pull-requests: write
     steps:
