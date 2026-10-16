@@ -46,16 +46,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version-file: .python-version
-      - name: Generate Heroku requirements from pyproject.toml
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import tomllib
-
-          project = tomllib.loads(Path("pyproject.toml").read_text())
-          dependencies = project["project"]["dependencies"]
-          Path("requirements.txt").write_text("\n".join(dependencies) + "\n")
-          PY
       - name: Deploy to Heroku
         # Uses the Heroku Platform API directly, so the runner needs no git or Heroku CLI.
         env:
