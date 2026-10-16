@@ -22,7 +22,7 @@ jobs:
     name: Deploy
     needs: ci
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, classroom-ci]
     environment: production
     steps:
       - name: Check Heroku configuration
@@ -57,7 +57,11 @@ jobs:
           Path("requirements.txt").write_text("\n".join(dependencies) + "\n")
           PY
       - name: Install Heroku CLI
-        run: curl --fail --silent --show-error --location https://cli-assets.heroku.com/install-ubuntu.sh | sh
+        run: |
+          curl --fail --silent --show-error --location \
+            https://cli-assets.heroku.com/channels/stable/heroku-linux-x64.tar.gz \
+            | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/heroku/bin" >> "$GITHUB_PATH"
       - name: Deploy to Heroku
         uses: akhileshns/heroku-deploy@v3.15.15
         with:
