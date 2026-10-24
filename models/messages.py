@@ -1,5 +1,3 @@
-"""Table 7: messages."""
-
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -16,22 +14,26 @@ if TYPE_CHECKING:
 
 
 class Message(Base):
-    """A question or reply inside an enquiry. Message text is never written to logs."""
-
     __tablename__ = "messages"
 
     message_id: Mapped[uuid.UUID] = uuid_pk()
     enquiry_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("enquiries.enquiry_id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("enquiries.enquiry_id", ondelete="CASCADE"),
+        nullable=False,
     )
     sender_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True
-    )  
+        UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="SET NULL"),
+        nullable=True,
+    )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     sent_at: Mapped[datetime] = timestamptz(nullable=False, server_default=func.now())
     read_at: Mapped[datetime | None] = timestamptz(nullable=True)
 
-    __table_args__ = (CheckConstraint("char_length(body) <= 2000", name="body_max_2000"),)
+    __table_args__ = (
+        CheckConstraint("char_length(body) <= 2000", name="body_max_2000"),
+    )
 
     enquiry: Mapped["Enquiry"] = relationship("Enquiry", back_populates="messages")
     sender: Mapped["User | None"] = relationship("User")

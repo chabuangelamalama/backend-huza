@@ -1,9 +1,7 @@
-"""Table 1: users."""
-
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, Text, text
+from sqlalchemy import CheckConstraint, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,8 +13,6 @@ if TYPE_CHECKING:
 
 
 class User(TimestampMixin, Base):
-    """Login account of a business user or an administrator (administrators have no business)."""
-
     __tablename__ = "users"
 
     user_id: Mapped[uuid.UUID] = uuid_pk()
@@ -30,11 +26,20 @@ class User(TimestampMixin, Base):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     phone: Mapped[str | None] = mapped_column(Text, nullable=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)  # Argon2id or bcrypt, never plaintext
-    role: Mapped[UserRole] = mapped_column(
-        user_role_t, nullable=False, default=UserRole.BUSINESS_USER, server_default=text("'BUSINESS_USER'")
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    user_role: Mapped[UserRole] = mapped_column(
+        user_role_t,
+        nullable=False,
+        default=UserRole.BUSINESS_USER,
+        server_default=text("'BUSINESS_USER'"),
     )
 
+    __table_args__ = (
+        CheckConstraint(
+            "(user_role = 'ADMIN') = (business_id IS NULL)",
+            name="user_role_business",
+        ),
+    )
     business: Mapped["Business | None"] = relationship(
         "Business", back_populates="user", foreign_keys=[business_id]
     )

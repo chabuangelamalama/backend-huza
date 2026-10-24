@@ -1,5 +1,3 @@
-"""Table 5: price_guides."""
-
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -17,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class PriceGuide(TimestampMixin, Base):
-    """Indicative price range with its source, date and sample size. Added by an administrator."""
-
     __tablename__ = "price_guides"
 
     guide_id: Mapped[uuid.UUID] = uuid_pk()
@@ -31,9 +27,11 @@ class PriceGuide(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(255), nullable=False)
     source_date: Mapped[date] = mapped_column(Date, nullable=False)
     sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    district: Mapped[str | None] = mapped_column(String(100), nullable=True)  # NULL means national
+    district: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     __table_args__ = (

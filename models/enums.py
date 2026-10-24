@@ -1,5 +1,3 @@
-"""Python enums and the matching PostgreSQL ENUM types (names follow the data model doc)."""
-
 import enum
 
 from sqlalchemy import Enum as SAEnum
@@ -33,6 +31,12 @@ class SupplierKind(StrEnum):
     PRODUCER = "PRODUCER"
     COLLECTOR = "COLLECTOR"
     DEALER = "DEALER"
+
+
+class OsmType(StrEnum):
+    NODE = "NODE"
+    WAY = "WAY"
+    RELATION = "RELATION"
 
 
 class Stream(StrEnum):
@@ -128,16 +132,21 @@ class NotificationEvent(StrEnum):
 
 def _pg_enum(cls: type[enum.Enum], name: str) -> SAEnum:
     """Native PostgreSQL ENUM that stores the member *values*."""
-    return SAEnum(cls, name=name, values_callable=lambda e: [m.value for m in e], validate_strings=True)
+    return SAEnum(
+        cls,
+        name=name,
+        values_callable=lambda e: [m.value for m in e],
+        validate_strings=True,
+    )
 
 
-# One type object per enum, shared by every column that uses it.
 user_role_t = _pg_enum(UserRole, "user_role")
 business_role_t = _pg_enum(BusinessRole, "business_role")
 business_type_t = _pg_enum(BusinessType, "business_type")
 supplier_kind_t = _pg_enum(SupplierKind, "supplier_kind")
 stream_t = _pg_enum(Stream, "stream")
 approval_status_t = _pg_enum(ApprovalStatus, "approval_status")
+osm_type_t = _pg_enum(OsmType, "osm_type")
 payout_network_t = _pg_enum(PayoutNetwork, "payout_network")
 listing_type_t = _pg_enum(ListingType, "listing_type")
 unit_t = _pg_enum(Unit, "unit")
