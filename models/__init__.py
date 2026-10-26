@@ -1,5 +1,3 @@
-"""Importing this package registers every table on Base.metadata (needed by Alembic and create_all)."""
-
 from .base import Base
 from .businesses import Business
 from .enquiries import Enquiry

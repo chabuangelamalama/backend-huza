@@ -1,18 +1,10 @@
-import uuid
-from datetime import datetime
-from typing import TYPE_CHECKING
-
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text, text
+from sqlalchemy import Column, CheckConstraint, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import relationship
 
 from .base import Base, TimestampMixin, timestamptz, uuid_pk
 from .enums import (
     ApprovalStatus,
-    BusinessRole,
-    BusinessType,
-    PayoutNetwork,
-    SupplierKind,
     approval_status_t,
     business_role_t,
     business_type_t,
@@ -20,40 +12,32 @@ from .enums import (
     supplier_kind_t,
 )
 
-if TYPE_CHECKING:
-    from .locations import Location
-    from .users import User
-
 
 class Business(TimestampMixin, Base):
     __tablename__ = "businesses"
 
-    business_id: Mapped[uuid.UUID] = uuid_pk()
-    business_legal_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    business_role: Mapped[BusinessRole] = mapped_column(business_role_t, nullable=False)
-    business_type: Mapped[BusinessType] = mapped_column(business_type_t, nullable=False)
-    supplier_kind: Mapped[SupplierKind | None] = mapped_column(
-        supplier_kind_t, nullable=True
-    )
-    location_id: Mapped[uuid.UUID] = mapped_column(
+    business_id = uuid_pk()
+    business_legal_name = Column(String(255), nullable=False)
+    display_name = Column(String(255), nullable=True)
+    business_role = Column(business_role_t, nullable=False)
+    business_type = Column(business_type_t, nullable=False)
+    supplier_kind = Column(supplier_kind_t, nullable=True)
+    location_id = Column(
         UUID(as_uuid=True),
         ForeignKey("locations.location_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    streams: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, server_default=text("'{}'")
-    )
-    contact_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
-    contact_email: Mapped[str] = mapped_column(Text, nullable=False)
-    registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    approval_status: Mapped[ApprovalStatus] = mapped_column(
+    streams = Column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    contact_phone = Column(Text, nullable=True)
+    contact_email = Column(Text, nullable=False)
+    registration_number = Column(String(100), nullable=True)
+    approval_status = Column(
         approval_status_t,
         nullable=False,
         default=ApprovalStatus.PENDING,
         server_default=text("'PENDING'"),
     )
-    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+    approved_by = Column(
         UUID(as_uuid=True),
         ForeignKey(
             "users.user_id",
@@ -63,12 +47,10 @@ class Business(TimestampMixin, Base):
         ),
         nullable=True,
     )
-    approved_at: Mapped[datetime | None] = timestamptz(nullable=True)
-    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    payout_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
-    payout_network: Mapped[PayoutNetwork | None] = mapped_column(
-        payout_network_t, nullable=True
-    )
+    approved_at = timestamptz(nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    payout_phone = Column(Text, nullable=True)
+    payout_network = Column(payout_network_t, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -89,13 +71,11 @@ class Business(TimestampMixin, Base):
         ),
     )
 
-    location: Mapped["Location"] = relationship("Location")
-    user: Mapped["User | None"] = relationship(
+    location = relationship("Location")
+    user = relationship(
         "User",
         back_populates="business",
         foreign_keys="User.business_id",
         uselist=False,
     )
-    approved_by_user: Mapped["User | None"] = relationship(
-        "User", foreign_keys=[approved_by]
-    )
+    approved_by_user = relationship("User", foreign_keys=[approved_by])
