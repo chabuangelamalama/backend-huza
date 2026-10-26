@@ -1,9 +1,5 @@
-import uuid
-from datetime import datetime
-from decimal import Decimal
-from typing import TYPE_CHECKING
-
 from sqlalchemy import (
+    Column,
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
@@ -12,60 +8,50 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import relationship
 
 from .base import Base, TimestampMixin, timestamptz, uuid_pk
 from .enums import (
     EnquiryStatus,
-    FailureReason,
-    Unit,
     enquiry_status_t,
     failure_reason_t,
     unit_t,
 )
 
-if TYPE_CHECKING:
-    from .businesses import Business
-    from .listings import Listing
-    from .messages import Message
-    from .payments import Payment
-
 
 class Enquiry(TimestampMixin, Base):
     __tablename__ = "enquiries"
 
-    enquiry_id: Mapped[uuid.UUID] = uuid_pk()
-    listing_id: Mapped[uuid.UUID] = mapped_column(
+    enquiry_id = uuid_pk()
+    listing_id = Column(
         UUID(as_uuid=True),
         ForeignKey("listings.listing_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    buyer_business_id: Mapped[uuid.UUID] = mapped_column(
+    buyer_business_id = Column(
         UUID(as_uuid=True),
         ForeignKey("businesses.business_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    seller_business_id: Mapped[uuid.UUID] = mapped_column(
+    seller_business_id = Column(
         UUID(as_uuid=True),
         ForeignKey("businesses.business_id", ondelete="RESTRICT"),
         nullable=False,
     )
-    status: Mapped[EnquiryStatus] = mapped_column(
+    status = Column(
         enquiry_status_t,
         nullable=False,
         default=EnquiryStatus.ENQUIRY,
         server_default=text("'ENQUIRY'"),
     )
-    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
-    unit: Mapped[Unit] = mapped_column(unit_t, nullable=False)
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
-    total_amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
-    failure_reason: Mapped[FailureReason | None] = mapped_column(
-        failure_reason_t, nullable=True
-    )
-    first_response_at: Mapped[datetime | None] = timestamptz(nullable=True)
-    accepted_at: Mapped[datetime | None] = timestamptz(nullable=True)
-    closed_at: Mapped[datetime | None] = timestamptz(nullable=True)
+    quantity = Column(Numeric(14, 3), nullable=False)
+    unit = Column(unit_t, nullable=False)
+    unit_price = Column(Numeric(19, 4), nullable=False)
+    total_amount = Column(Numeric(19, 4), nullable=False)
+    failure_reason = Column(failure_reason_t, nullable=True)
+    first_response_at = timestamptz(nullable=True)
+    accepted_at = timestamptz(nullable=True)
+    closed_at = timestamptz(nullable=True)
 
     __table_args__ = (
         ForeignKeyConstraint(
@@ -95,16 +81,8 @@ class Enquiry(TimestampMixin, Base):
         Index("ix_enquiries_seller_status", "seller_business_id", "status"),
     )
 
-    listing: Mapped["Listing"] = relationship("Listing", foreign_keys=[listing_id])
-    buyer: Mapped["Business"] = relationship(
-        "Business", foreign_keys=[buyer_business_id]
-    )
-    seller: Mapped["Business"] = relationship(
-        "Business", foreign_keys=[seller_business_id]
-    )
-    messages: Mapped[list["Message"]] = relationship(
-        "Message", back_populates="enquiry", passive_deletes=True
-    )
-    payments: Mapped[list["Payment"]] = relationship(
-        "Payment", back_populates="enquiry"
-    )
+    listing = relationship("Listing", foreign_keys=[listing_id])
+    buyer = relationship("Business", foreign_keys=[buyer_business_id])
+    seller = relationship("Business", foreign_keys=[seller_business_id])
+    messages = relationship("Message", back_populates="enquiry", passive_deletes=True)
+    payments = relationship("Payment", back_populates="enquiry")

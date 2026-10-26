@@ -131,7 +131,6 @@ class NotificationEvent(StrEnum):
 
 
 def _pg_enum(cls: type[enum.Enum], name: str) -> SAEnum:
-    """Native PostgreSQL ENUM that stores the member *values*."""
     return SAEnum(
         cls,
         name=name,
