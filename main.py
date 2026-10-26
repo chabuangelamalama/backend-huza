@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 
+from routers import price_guides
+
 app = FastAPI(title="Your Project Name", version="0.1.0")
+app.include_router(price_guides.router)
 
 
 @app.get("/health")
