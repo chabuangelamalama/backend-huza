@@ -1,11 +1,19 @@
 from sqlalchemy import Column, BigInteger, Numeric, String, Text, UniqueConstraint
 
-from .base import Base, CreatedAtMixin, uuid_pk
-from .enums import osm_type_t
+from .base import Base, CreatedAtMixin, StrEnum, pg_enum, uuid_pk
+
+
+class OsmType(StrEnum):
+    NODE = "NODE"
+    WAY = "WAY"
+    RELATION = "RELATION"
+
+
+osm_type_t = pg_enum(OsmType, "osm_type")
 
 
 class Location(CreatedAtMixin, Base):
-    __tablename__ = "locations"
+    __tablename__ = "location"
 
     location_id = uuid_pk()
     osm_type = Column(osm_type_t, nullable=False)

@@ -11,17 +11,34 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from .base import Base, TimestampMixin, timestamptz, uuid_pk
-from .enums import PaymentStatus, PayoutStatus, payment_status_t, payout_status_t
+from .base import Base, StrEnum, TimestampMixin, pg_enum, timestamptz, uuid_pk
+
+
+class PaymentStatus(StrEnum):
+    PENDING = "PENDING"
+    SUCCESSFUL = "SUCCESSFUL"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class PayoutStatus(StrEnum):
+    NOT_DUE = "NOT_DUE"
+    PENDING = "PENDING"
+    PAID = "PAID"
+    FAILED = "FAILED"
+
+
+payment_status_t = pg_enum(PaymentStatus, "payment_status")
+payout_status_t = pg_enum(PayoutStatus, "payout_status")
 
 
 class Payment(TimestampMixin, Base):
-    __tablename__ = "payments"
+    __tablename__ = "payment"
 
     payment_id = uuid_pk()
     enquiry_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("enquiries.enquiry_id", ondelete="RESTRICT"),
+        ForeignKey("enquiry.enquiry_id", ondelete="RESTRICT"),
         nullable=False,
     )
     amount = Column(Numeric(19, 4), nullable=False)
