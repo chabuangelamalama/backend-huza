@@ -1,4 +1,6 @@
-from sqlalchemy import Column, DateTime, MetaData, func, text
+import enum
+
+from sqlalchemy import Column, DateTime, Enum as SAEnum, MetaData, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase
 
@@ -33,4 +35,18 @@ class CreatedAtMixin:
 class TimestampMixin(CreatedAtMixin):
     updated_at = timestamptz(
         nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StrEnum(str, enum.Enum):
+    def __str__(self) -> str:
+        return self.value
+
+
+def pg_enum(cls: type[enum.Enum], name: str) -> SAEnum:
+    return SAEnum(
+        cls,
+        name=name,
+        values_callable=lambda e: [m.value for m in e],
+        validate_strings=True,
     )

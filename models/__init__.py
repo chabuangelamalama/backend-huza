@@ -1,13 +1,12 @@
 from .base import Base
-from .businesses import Business
-from .enquiries import Enquiry
-from .listings import Listing
-from .locations import Location
-from .messages import Message
-from .notifications import Notification
-from .payments import Payment
-from .price_guides import PriceGuide
-from .users import User
+from .business import Business
+from .enquiry import Enquiry
+from .listing import Listing
+from .location import Location
+from .notification import Notification
+from .payment import Payment
+from .price_guide import PriceGuide
+from .user import User
 
 __all__ = [
     "Base",
@@ -15,7 +14,6 @@ __all__ = [
     "Enquiry",
     "Listing",
     "Location",
-    "Message",
     "Notification",
     "Payment",
     "PriceGuide",

@@ -11,28 +11,24 @@ from models import (
     Enquiry,
     Listing,
     Location,
-    Message,
     Notification,
     Payment,
     PriceGuide,
     User,
 )
-from models.enums import (
+from models.business import (
+    ApprovalStatus,
     BusinessRole,
     BusinessType,
-    EnquiryStatus,
-    FailureReason,
-    ListingStatus,
-    ListingType,
-    NotificationEvent,
-    OsmType,
-    PaymentStatus,
     PayoutNetwork,
-    Stream,
     SupplierKind,
-    Unit,
-    UserRole,
 )
+from models.enquiry import EnquiryStatus, FailureReason
+from models.listing import ListingStatus, ListingType, Stream, Unit
+from models.location import OsmType
+from models.notification import NotificationEvent
+from models.payment import PaymentStatus, PayoutStatus
+from models.user import UserRole
 
 
 def make_location(session, osm_id=1, osm_type=OsmType.NODE):
@@ -126,22 +122,12 @@ def make_enquiry(session, listing, buyer, **changes):
     return enquiry
 
 
-def make_deal(session):
+def make_open_enquiry(session):
     location = make_location(session)
     seller = make_business(session, location)
     buyer = make_business(session, location, role=BusinessRole.BUYER)
     listing = make_listing(session, seller, location)
-    enquiry = make_enquiry(session, listing, buyer)
-    return enquiry
-
-
-def make_message(session, enquiry, **changes):
-    values = dict(enquiry_id=enquiry.enquiry_id, body="Is it still available?")
-    values.update(changes)
-    message = Message(**values)
-    session.add(message)
-    session.flush()
-    return message
+    return make_enquiry(session, listing, buyer)
 
 
 def make_payment(session, enquiry, **changes):
@@ -187,19 +173,22 @@ def make_price_guide(session, **changes):
     return guide
 
 
-def test_all_nine_tables_exist(engine):
+def test_all_eight_tables_exist(engine):
     names = set(inspect(engine).get_table_names())
     assert {
-        "users",
-        "businesses",
-        "locations",
-        "listings",
-        "price_guides",
-        "enquiries",
-        "messages",
-        "payments",
-        "notifications",
+        "app_user",
+        "business",
+        "location",
+        "listing",
+        "price_guide",
+        "enquiry",
+        "payment",
+        "notification",
     } <= names
+
+
+def test_message_table_does_not_exist(engine):
+    assert "message" not in set(inspect(engine).get_table_names())
 
 
 def test_same_osm_place_is_saved_once(session):
@@ -216,7 +205,7 @@ def test_same_osm_id_is_allowed_for_a_different_type(session):
 
 def test_new_business_starts_pending(session):
     business = make_business(session, make_location(session))
-    assert business.approval_status.value == "PENDING"
+    assert business.approval_status == ApprovalStatus.PENDING
 
 
 def test_admin_cannot_have_a_business(session):
@@ -247,6 +236,11 @@ def test_business_user_needs_a_business(session):
     )
     with pytest.raises(IntegrityError):
         session.flush()
+
+
+def test_admin_without_a_business_is_allowed(session):
+    admin = make_user(session, role=UserRole.ADMIN)
+    assert admin.business_id is None
 
 
 def test_consumer_must_be_a_buyer(session):
@@ -355,6 +349,13 @@ def test_listing_quantity_cannot_be_negative(session):
         make_listing(session, business, location, quantity=Decimal("-1"))
 
 
+def test_listing_quantity_can_be_zero(session):
+    location = make_location(session)
+    business = make_business(session, location)
+    listing = make_listing(session, business, location, quantity=Decimal("0"))
+    assert listing.quantity == Decimal("0")
+
+
 def test_seller_must_own_the_listing(session):
     location = make_location(session)
     seller = make_business(session, location)
@@ -374,6 +375,21 @@ def test_cancelled_enquiry_needs_a_reason(session):
         make_enquiry(session, listing, buyer, status=EnquiryStatus.CANCELLED)
 
 
+def test_cancelled_enquiry_with_a_reason_is_allowed(session):
+    location = make_location(session)
+    seller = make_business(session, location)
+    buyer = make_business(session, location, role=BusinessRole.BUYER)
+    listing = make_listing(session, seller, location)
+    enquiry = make_enquiry(
+        session,
+        listing,
+        buyer,
+        status=EnquiryStatus.CANCELLED,
+        failure_reason=FailureReason.PRICE,
+    )
+    assert enquiry.failure_reason == FailureReason.PRICE
+
+
 def test_buyer_has_one_open_enquiry_per_listing(session):
     location = make_location(session)
     seller = make_business(session, location)
@@ -384,8 +400,19 @@ def test_buyer_has_one_open_enquiry_per_listing(session):
         make_enquiry(session, listing, buyer)
 
 
+def test_two_buyers_can_enquire_about_the_same_listing(session):
+    location = make_location(session)
+    seller = make_business(session, location)
+    first = make_business(session, location, role=BusinessRole.BUYER)
+    second = make_business(session, location, role=BusinessRole.BUYER)
+    listing = make_listing(session, seller, location)
+    make_enquiry(session, listing, first)
+    other = make_enquiry(session, listing, second)
+    assert other.enquiry_id is not None
+
+
 def test_new_enquiry_starts_as_enquiry(session):
-    enquiry = make_deal(session)
+    enquiry = make_open_enquiry(session)
     assert enquiry.status == EnquiryStatus.ENQUIRY
 
 
@@ -416,30 +443,20 @@ def test_buyer_can_enquire_again_after_the_first_is_completed(session):
     assert again.status == EnquiryStatus.ENQUIRY
 
 
-def test_message_cannot_be_longer_than_2000_characters(session):
-    enquiry = make_deal(session)
-    with pytest.raises(IntegrityError):
-        make_message(session, enquiry, body="a" * 2001)
-
-
-def test_deleting_an_enquiry_deletes_its_messages(session):
-    enquiry = make_deal(session)
-    make_message(session, enquiry)
-    session.delete(enquiry)
-    session.flush()
-    session.expire_all()
-    count = session.scalar(select(func.count()).select_from(Message))
-    assert count == 0
-
-
 def test_payment_amount_must_be_above_zero(session):
-    enquiry = make_deal(session)
+    enquiry = make_open_enquiry(session)
     with pytest.raises(IntegrityError):
         make_payment(session, enquiry, amount=Decimal("0"))
 
 
+def test_new_payment_starts_pending_and_not_due(session):
+    payment = make_payment(session, make_open_enquiry(session))
+    assert payment.status == PaymentStatus.PENDING
+    assert payment.payout_status == PayoutStatus.NOT_DUE
+
+
 def test_payment_reference_must_be_unique(session):
-    enquiry = make_deal(session)
+    enquiry = make_open_enquiry(session)
     make_payment(
         session, enquiry, reference_id="ref-1", status=PaymentStatus.SUCCESSFUL
     )
@@ -450,10 +467,30 @@ def test_payment_reference_must_be_unique(session):
 
 
 def test_enquiry_has_only_one_pending_payment(session):
-    enquiry = make_deal(session)
+    enquiry = make_open_enquiry(session)
     make_payment(session, enquiry)
     with pytest.raises(IntegrityError):
         make_payment(session, enquiry)
+
+
+def test_enquiry_has_only_one_successful_payment(session):
+    enquiry = make_open_enquiry(session)
+    make_payment(session, enquiry, status=PaymentStatus.SUCCESSFUL)
+    with pytest.raises(IntegrityError):
+        make_payment(session, enquiry, status=PaymentStatus.SUCCESSFUL)
+
+
+def test_new_payment_is_allowed_after_a_failed_one(session):
+    enquiry = make_open_enquiry(session)
+    make_payment(session, enquiry, status=PaymentStatus.FAILED)
+    retry = make_payment(session, enquiry)
+    assert retry.status == PaymentStatus.PENDING
+
+
+def test_new_notification_is_unread(session):
+    user = make_user(session, role=UserRole.ADMIN)
+    notification = make_notification(session, user)
+    assert notification.read_at is None
 
 
 def test_deleting_a_user_deletes_their_notifications(session):
@@ -467,7 +504,7 @@ def test_deleting_a_user_deletes_their_notifications(session):
 
 
 def test_deleting_an_enquiry_keeps_the_notification_without_it(session):
-    enquiry = make_deal(session)
+    enquiry = make_open_enquiry(session)
     user = make_user(session, role=UserRole.ADMIN)
     notification = make_notification(session, user, enquiry_id=enquiry.enquiry_id)
     session.delete(enquiry)
@@ -484,3 +521,8 @@ def test_price_guide_min_price_must_be_above_zero(session):
 def test_price_guide_max_price_cannot_be_below_min_price(session):
     with pytest.raises(IntegrityError):
         make_price_guide(session, min_price=Decimal("60"), max_price=Decimal("30"))
+
+
+def test_price_guide_allows_equal_min_and_max_price(session):
+    guide = make_price_guide(session, min_price=Decimal("40"), max_price=Decimal("40"))
+    assert guide.guide_id is not None

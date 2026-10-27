@@ -11,11 +11,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from .base import Base, TimestampMixin, uuid_pk
-from .enums import stream_t, unit_t
+from .listing import stream_t, unit_t
 
 
 class PriceGuide(TimestampMixin, Base):
-    __tablename__ = "price_guides"
+    __tablename__ = "price_guide"
 
     guide_id = uuid_pk()
     stream = Column(stream_t, nullable=False)
@@ -30,7 +30,7 @@ class PriceGuide(TimestampMixin, Base):
     district = Column(String(100), nullable=True)
     created_by = Column(
         UUID(as_uuid=True),
-        ForeignKey("users.user_id", ondelete="SET NULL"),
+        ForeignKey("app_user.user_id", ondelete="SET NULL"),
         nullable=True,
     )
 
