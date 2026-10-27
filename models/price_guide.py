@@ -10,8 +10,38 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from .base import Base, TimestampMixin, uuid_pk
-from .listing import stream_t, unit_t
+from .base import Base, StrEnum, TimestampMixin, uuid_pk
+from .listing import Stream, stream_t, unit_t
+
+
+class SawdustGrade(StrEnum):
+    DRY = "dry"
+    WET = "wet"
+
+
+class PlasticGrade(StrEnum):
+    HARD = "hard"
+    SOFT = "soft"
+
+
+class GarmentGrade(StrEnum):
+    COTTON = "cotton"
+    SYNTHETIC = "synthetic"
+    MIXED = "mixed"
+
+
+class GlassGrade(StrEnum):
+    CLEAR = "clear"
+    AMBER = "amber"
+    GREEN = "green"
+
+
+GRADES_BY_STREAM = {
+    Stream.SAWDUST: {grade.value for grade in SawdustGrade},
+    Stream.PLASTIC: {grade.value for grade in PlasticGrade},
+    Stream.GARMENT_OFFCUTS: {grade.value for grade in GarmentGrade},
+    Stream.GLASS: {grade.value for grade in GlassGrade},
+}
 
 
 class PriceGuide(TimestampMixin, Base):

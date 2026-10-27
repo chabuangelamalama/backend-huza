@@ -3,7 +3,8 @@ from datetime import date
 from decimal import Decimal
 
 from models import PriceGuide, User
-from models.enums import Stream, Unit, UserRole
+from models.listing import Stream, Unit
+from models.user import UserRole
 from tests.test_models import make_business, make_location
 
 
