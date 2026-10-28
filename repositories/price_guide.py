@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, true
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,19 @@ from models.price_guide import PriceGuide
 from models.user import User
 
 logger = logging.getLogger("repositories")
+
+
+def _narrow(column, wanted):
+    if not wanted:
+        return true(), case((column.is_(None), 0), else_=1)
+    wanted = wanted.lower()
+    allowed = column.is_(None) | (func.lower(column) == wanted)
+    rank = case(
+        (func.lower(column) == wanted, 0),
+        (column.is_(None), 1),
+        else_=2,
+    )
+    return allowed, rank
 
 
 class PriceGuideRepository:
@@ -95,43 +108,25 @@ class PriceGuideRepository:
         district=None,
         grade=None,
     ):
-        query = select(self.model).where(
-            self.model.stream == stream,
-            func.lower(self.model.material) == material.lower(),
-            self.model.unit == unit,
+        district_allowed, district_rank = _narrow(self.model.district, district)
+        grade_allowed, grade_rank = _narrow(self.model.grade, grade)
+        query = (
+            select(self.model)
+            .where(
+                self.model.stream == stream,
+                func.lower(self.model.material) == material.lower(),
+                self.model.unit == unit,
+                district_allowed,
+                grade_allowed,
+            )
+            .order_by(
+                grade_rank,
+                district_rank,
+                self.model.source_date.desc(),
+                self.model.guide_id,
+            )
+            .limit(1)
         )
-        if district:
-            wanted = district.lower()
-            query = query.where(
-                self.model.district.is_(None)
-                | (func.lower(self.model.district) == wanted)
-            )
-            district_rank = case(
-                (func.lower(self.model.district) == wanted, 0),
-                (self.model.district.is_(None), 1),
-                else_=2,
-            )
-        else:
-            district_rank = case((self.model.district.is_(None), 0), else_=1)
-        if grade:
-            wanted_grade = grade.lower()
-            query = query.where(
-                self.model.grade.is_(None)
-                | (func.lower(self.model.grade) == wanted_grade)
-            )
-            grade_rank = case(
-                (func.lower(self.model.grade) == wanted_grade, 0),
-                (self.model.grade.is_(None), 1),
-                else_=2,
-            )
-        else:
-            grade_rank = case((self.model.grade.is_(None), 0), else_=1)
-        query = query.order_by(
-            grade_rank,
-            district_rank,
-            self.model.source_date.desc(),
-            self.model.guide_id,
-        ).limit(1)
         return db.scalars(query).first()
 
     def create(self, db: Session, data: dict):

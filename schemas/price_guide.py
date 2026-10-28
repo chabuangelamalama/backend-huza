@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from models.listing import Stream, Unit
 
 Position = Literal["below", "within", "above"]
+
 PriceField = Field(gt=0, max_digits=19, decimal_places=4)
 
 
@@ -49,6 +50,25 @@ class PriceGuideUpdate(BaseModel):
     district: str | None = Field(default=None, max_length=100)
 
 
+class PriceGuideFilter(BaseModel):
+    stream: Stream | None = None
+    material: str | None = Field(default=None, max_length=150)
+    grade: str | None = Field(default=None, max_length=100)
+    unit: Unit | None = None
+    district: str | None = Field(default=None, max_length=100)
+    limit: int = Field(default=50, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class PriceLookup(BaseModel):
+    stream: Stream
+    material: str = Field(min_length=1, max_length=150)
+    unit: Unit
+    grade: str | None = Field(default=None, max_length=100)
+    price: Decimal | None = Field(default=None, gt=0)
+    district: str | None = Field(default=None, max_length=100)
+
+
 class PriceGuideRead(PriceGuideFields):
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,6 +76,16 @@ class PriceGuideRead(PriceGuideFields):
     created_by: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+    stream: Stream
+    material: str = Field(min_length=1, max_length=150)
+    grade: str | None = Field(default=None, max_length=100)
+    unit: Unit
+    min_price: Decimal = PriceField
+    max_price: Decimal = PriceField
+    source: str = Field(min_length=1, max_length=255)
+    source_date: date
+    sample_size: int | None = Field(default=None, ge=1)
+    district: str | None = Field(default=None, max_length=100)
 
 
 class PriceCheck(BaseModel):
