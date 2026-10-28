@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from routers import price_guide
 
-app = FastAPI(title="Your Project Name", version="0.1.0")
+app = FastAPI(title="HUZA API", version="0.1.0")
 app.include_router(price_guide.router)
 
 
