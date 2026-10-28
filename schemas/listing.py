@@ -1,34 +1,17 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from typing import Annotated
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    StringConstraints,
-    computed_field,
-)
+from pydantic import BaseModel, ConfigDict
 
 from models.listing import ListingStatus, ListingType, SortingStatus, Stream, Unit
 
-SafeText = Annotated[str, StringConstraints(pattern=r"^[^<>]*$")]
-
 
 class ListingPhotoRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    photo_id: UUID
-    listing_id: UUID
     position: int
     width: int
     height: int
     size_bytes: int
-
-    @computed_field
-    @property
-    def url(self) -> str:
-        return f"/listing/{self.listing_id}/photos/{self.photo_id}"
 
 
 class ListingBase(BaseModel):
@@ -45,16 +28,15 @@ class ListingBase(BaseModel):
 
 
 class ListingCreate(ListingBase):
-    material_or_product: SafeText
-    specifications: dict[SafeText, SafeText] = {}
+    pass
 
 
 class ListingUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     stream: Stream | None = None
-    material_or_product: SafeText | None = None
-    specifications: dict[SafeText, SafeText] | None = None
+    material_or_product: str | None = None
+    specifications: dict[str, str] | None = None
     quantity: Decimal | None = None
     unit: Unit | None = None
     location_id: UUID | None = None

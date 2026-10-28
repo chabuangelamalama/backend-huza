@@ -1,10 +1,9 @@
 from uuid import UUID
 
-from sqlalchemy.orm import Session, undefer
+from sqlalchemy.orm import Session
 
 from models.business import Business
 from models.listing import Listing, ListingStatus, ListingType, Stream
-from models.listing_photo import ListingPhoto
 from models.location import Location
 
 
@@ -55,32 +54,6 @@ class ListingRepository:
         for key, value in data.items():
             setattr(listing, key, value)
         return self._save(db, listing)
-
-    def get_photo(
-        self, db: Session, listing_id: UUID, photo_id: UUID
-    ) -> ListingPhoto | None:
-        return (
-            db.query(ListingPhoto)
-            .options(undefer(ListingPhoto.data))
-            .filter(
-                ListingPhoto.listing_id == listing_id,
-                ListingPhoto.photo_id == photo_id,
-            )
-            .first()
-        )
-
-    def add_photo(self, db: Session, listing: Listing, data: dict) -> Listing:
-        self._save(db, ListingPhoto(listing_id=listing.listing_id, **data))
-        db.refresh(listing)
-        return listing
-
-    def remove_photo(
-        self, db: Session, listing: Listing, photo: ListingPhoto
-    ) -> Listing:
-        db.delete(photo)
-        db.commit()
-        db.refresh(listing)
-        return listing
 
     def _save(self, db: Session, record):
         db.add(record)

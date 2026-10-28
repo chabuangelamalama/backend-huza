@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime, timezone
 from io import BytesIO
 from uuid import UUID
@@ -81,6 +82,25 @@ def clean_photo(data: bytes) -> tuple[bytes, int, int]:
     return output.getvalue(), clean.width, clean.height
 
 
+def prepare_photos(files: list[bytes]) -> list[dict]:
+    if len(files) > MAX_PHOTOS:
+        raise _error(400, f"A listing can have at most {MAX_PHOTOS} photos.")
+    photos = []
+    for position, data in enumerate(files, start=1):
+        clean_data, width, height = clean_photo(data)
+        photos.append(
+            {
+                "position": position,
+                "content_type": "image/webp",
+                "size_bytes": len(clean_data),
+                "width": width,
+                "height": height,
+                "data": base64.b64encode(clean_data).decode(),
+            }
+        )
+    return photos
+
+
 def _get_business(db, current_user):
     if current_user.business_id is None:
         raise _error(403, "Only business accounts can manage listings.")
@@ -145,13 +165,14 @@ def _check_status_change(listing, new_status: ListingStatus, quantity):
         raise _error(400, "Add a quantity above 0 before publishing.")
 
 
-def create_listing(db, data: ListingCreate, current_user):
+def create_listing(db, data: ListingCreate, photo_files: list[bytes], current_user):
     business = _get_approved_business(db, current_user)
     listing_type = listing_type_for_role(business.business_role)
     if listing_type is None:
         raise _error(403, "Buyers cannot create listings.")
     values = data.model_dump()
     _check_values(db, business, values, creating=True)
+    values["photos"] = prepare_photos(photo_files)
     values["business_id"] = business.business_id
     values["listing_type"] = listing_type
     return listing_repository.create(db, values)
@@ -213,38 +234,10 @@ def close_listing(db, listing_id: UUID, current_user):
     return listing_repository.update(db, listing, {"status": ListingStatus.CLOSED})
 
 
-def add_photo(db, listing_id: UUID, data: bytes, current_user):
-    business = _get_approved_business(db, current_user)
-    listing = _get_own_listing(db, listing_id, business)
-    _check_not_closed(listing)
-    used = {photo.position for photo in listing.photos}
-    free = [position for position in range(1, MAX_PHOTOS + 1) if position not in used]
-    if not free:
-        raise _error(400, f"A listing can have at most {MAX_PHOTOS} photos.")
-    clean_data, width, height = clean_photo(data)
-    photo = {
-        "position": free[0],
-        "content_type": "image/webp",
-        "size_bytes": len(clean_data),
-        "width": width,
-        "height": height,
-        "data": clean_data,
-    }
-    return listing_repository.add_photo(db, listing, photo)
-
-
-def remove_photo(db, listing_id: UUID, photo_id: UUID, current_user):
-    business = _get_approved_business(db, current_user)
-    listing = _get_own_listing(db, listing_id, business)
-    _check_not_closed(listing)
-    photo = listing_repository.get_photo(db, listing.listing_id, photo_id)
-    if photo is None:
-        raise _error(404, "Photo not found.")
-    return listing_repository.remove_photo(db, listing, photo)
-
-
-def get_photo(db, listing_id: UUID, photo_id: UUID):
-    photo = listing_repository.get_photo(db, listing_id, photo_id)
-    if photo is None:
-        raise _error(404, "Photo not found.")
-    return photo
+def get_photo(db, listing_id: UUID, position: int):
+    listing = listing_repository.get(db, listing_id)
+    photos = listing.photos if listing else []
+    for photo in photos:
+        if photo["position"] == position:
+            return base64.b64decode(photo["data"]), photo["content_type"]
+    raise _error(404, "Photo not found.")

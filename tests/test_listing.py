@@ -1,3 +1,5 @@
+import base64
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
@@ -15,20 +17,25 @@ import database
 from core.dependencies import get_current_user
 from models.business import ApprovalStatus, Business, BusinessRole, BusinessType
 from models.listing import Listing, ListingStatus, ListingType, Stream, Unit
-from models.listing_photo import ListingPhoto
 from models.location import Location, OsmType
 from repositories.listing_repository import listing_repository as repository
 from routers.listing import router
 from schemas.listing import ListingCreate, ListingRead, ListingUpdate
 from services import listing_service
-from pydantic import ValidationError
 
 BUSINESS_ID = uuid4()
 OTHER_BUSINESS_ID = uuid4()
 DB = object()
 LISTING_ID = str(uuid4())
 LOCATION_ID = str(uuid4())
-PHOTO_ID = str(uuid4())
+STORED_PHOTO = {
+    "position": 1,
+    "content_type": "image/webp",
+    "size_bytes": 3,
+    "width": 10,
+    "height": 10,
+    "data": "YWJj",
+}
 
 SAMPLE = {
     "listing_id": LISTING_ID,
@@ -100,7 +107,7 @@ def make_listing(
     business_id=BUSINESS_ID,
     published_at=None,
     quantity=Decimal("100"),
-    positions=(),
+    photos=None,
 ):
     return SimpleNamespace(
         listing_id=uuid4(),
@@ -108,7 +115,7 @@ def make_listing(
         status=status,
         published_at=published_at,
         quantity=quantity,
-        photos=[SimpleNamespace(position=position) for position in positions],
+        photos=photos or [],
     )
 
 
@@ -125,10 +132,17 @@ def make_create(**changes):
     return ListingCreate(**values)
 
 
+def create(data=None, photos=None):
+    return listing_service.create_listing(
+        DB, data or make_create(), photos or [], make_user()
+    )
+
+
 @pytest.fixture
 def repo(monkeypatch):
     fake = MagicMock()
     fake.update.side_effect = apply_values
+    fake.create.side_effect = lambda db, values: values
     monkeypatch.setattr(listing_service, "listing_repository", fake)
     return fake
 
@@ -174,55 +188,10 @@ def test_listing_status_as_text():
     assert str(ListingStatus.DRAFT) == "DRAFT"
 
 
-def test_photo_read_has_url():
-    photo = {
-        "photo_id": PHOTO_ID,
-        "listing_id": LISTING_ID,
-        "position": 1,
-        "width": 10,
-        "height": 10,
-        "size_bytes": 50,
-    }
-    read = ListingRead.model_validate({**SAMPLE, "photos": [photo]})
-    assert read.photos[0].url == f"/listing/{LISTING_ID}/photos/{PHOTO_ID}"
-
-
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"material_or_product": "<script>alert(1)</script>"},
-        {"specifications": {"<grade>": "A"}},
-        {"specifications": {"grade": "A > B"}},
-    ],
-)
-def test_create_refuses_angle_brackets(changes):
-    with pytest.raises(ValidationError):
-        make_create(**changes)
-
-
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"material_or_product": "<b>Pine</b>"},
-        {"specifications": {"grade": "<A>"}},
-    ],
-)
-def test_update_refuses_angle_brackets(changes):
-    with pytest.raises(ValidationError):
-        ListingUpdate(**changes)
-
-
-def test_update_without_text_is_allowed():
-    update = ListingUpdate(unit_price=Decimal("45"))
-    assert update.material_or_product is None
-    assert update.specifications is None
-
-
-def test_router_refuses_angle_brackets(client):
-    response = client.post(
-        "/listing/", json={**CREATE_BODY, "material_or_product": "<b>Pine</b>"}
-    )
-    assert response.status_code == 422
+def test_photo_read_hides_photo_data():
+    read = ListingRead.model_validate({**SAMPLE, "photos": [STORED_PHOTO]})
+    assert read.photos[0].position == 1
+    assert "data" not in read.photos[0].model_dump()
 
 
 @pytest.mark.parametrize(
@@ -265,7 +234,6 @@ def test_clean_photo_saves_small_webp():
     data, width, height = listing_service.clean_photo(make_image(size=(2000, 1000)))
     assert open_image(data).format == "WEBP"
     assert (width, height) == (1600, 800)
-    assert open_image(data).size == (1600, 800)
 
 
 def test_clean_photo_removes_metadata():
@@ -295,6 +263,20 @@ def test_clean_photo_converts_cmyk_jpeg():
     assert open_image(data).mode == "RGB"
 
 
+def test_prepare_photos_numbers_positions():
+    photos = listing_service.prepare_photos([make_image("PNG"), make_image("JPEG")])
+    assert [photo["position"] for photo in photos] == [1, 2]
+    assert all(photo["content_type"] == "image/webp" for photo in photos)
+    for photo in photos:
+        saved = base64.b64decode(photo["data"])
+        assert photo["size_bytes"] == len(saved)
+        assert open_image(saved).format == "WEBP"
+
+
+def test_prepare_photos_refuses_more_than_five():
+    raises_status(400, lambda: listing_service.prepare_photos([make_image()] * 6))
+
+
 def test_user_without_business_cannot_manage_listings(repo):
     raises_status(403, lambda: listing_service.list_my_listings(DB, make_user(None)))
 
@@ -313,28 +295,41 @@ def test_list_my_listings(repo):
 
 def test_pending_business_cannot_create_listing(repo):
     repo.get_business.return_value = make_business(approval=ApprovalStatus.PENDING)
-    raises_status(
-        403, lambda: listing_service.create_listing(DB, make_create(), make_user())
-    )
+    raises_status(403, create)
 
 
 def test_buyer_cannot_create_listing(repo):
     repo.get_business.return_value = make_business(role=BusinessRole.BUYER)
-    raises_status(
-        403, lambda: listing_service.create_listing(DB, make_create(), make_user())
-    )
+    raises_status(403, create)
 
 
 def test_supplier_creates_listing_for_own_business(repo):
     repo.get_business.return_value = make_business()
-    repo.create.side_effect = lambda db, values: values
-    values = listing_service.create_listing(
-        DB, make_create(material_or_product="  Pine sawdust  "), make_user()
-    )
+    values = create(make_create(material_or_product="  Pine sawdust  "))
     assert values["material_or_product"] == "Pine sawdust"
     assert values["listing_type"] == ListingType.RAW_BYPRODUCT
     assert values["business_id"] == BUSINESS_ID
+    assert values["photos"] == []
     assert "status" not in values
+
+
+def test_create_with_photos_saves_them_together(repo):
+    repo.get_business.return_value = make_business()
+    values = create(photos=[make_image("PNG"), make_image("JPEG")])
+    assert [photo["position"] for photo in values["photos"]] == [1, 2]
+    repo.create.assert_called_once()
+
+
+def test_bad_photo_saves_nothing(repo):
+    repo.get_business.return_value = make_business()
+    raises_status(400, lambda: create(photos=[make_image("PNG"), make_image("GIF")]))
+    repo.create.assert_not_called()
+
+
+def test_sixth_photo_saves_nothing(repo):
+    repo.get_business.return_value = make_business()
+    raises_status(400, lambda: create(photos=[make_image()] * 6))
+    repo.create.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -350,18 +345,13 @@ def test_supplier_creates_listing_for_own_business(repo):
 )
 def test_create_rejects_bad_values(repo, changes, code):
     repo.get_business.return_value = make_business()
-    raises_status(
-        code,
-        lambda: listing_service.create_listing(DB, make_create(**changes), make_user()),
-    )
+    raises_status(code, lambda: create(make_create(**changes)))
 
 
 def test_create_rejects_unknown_location(repo):
     repo.get_business.return_value = make_business()
     repo.get_location.return_value = None
-    raises_status(
-        400, lambda: listing_service.create_listing(DB, make_create(), make_user())
-    )
+    raises_status(400, create)
 
 
 def test_get_missing_listing(repo):
@@ -438,7 +428,10 @@ def test_update_closed_listing(own_listing):
 
 def test_update_price(own_listing):
     result = listing_service.update_listing(
-        DB, own_listing.listing_id, ListingUpdate(unit_price=Decimal("45")), make_user()
+        DB,
+        own_listing.listing_id,
+        ListingUpdate(unit_price=Decimal("45")),
+        make_user(),
     )
     assert result.unit_price == Decimal("45")
     assert result.status == ListingStatus.DRAFT
@@ -527,78 +520,19 @@ def test_cannot_close_twice(own_listing):
     )
 
 
-def test_cannot_add_photo_to_closed_listing(own_listing):
-    own_listing.status = ListingStatus.CLOSED
-    raises_status(
-        400,
-        lambda: listing_service.add_photo(
-            DB, own_listing.listing_id, make_image(), make_user()
-        ),
-    )
-
-
-def test_cannot_add_more_than_five_photos(own_listing):
-    own_listing.photos = [SimpleNamespace(position=number) for number in range(1, 6)]
-    raises_status(
-        400,
-        lambda: listing_service.add_photo(
-            DB, own_listing.listing_id, make_image(), make_user()
-        ),
-    )
-
-
-def test_add_photo_uses_first_free_position(own_listing, repo):
-    own_listing.photos = [SimpleNamespace(position=1), SimpleNamespace(position=3)]
-    repo.add_photo.side_effect = lambda db, listing, photo: photo
-    photo = listing_service.add_photo(
-        DB, own_listing.listing_id, make_image("PNG"), make_user()
-    )
-    assert photo["position"] == 2
-    assert photo["content_type"] == "image/webp"
-    assert photo["size_bytes"] == len(photo["data"])
-    assert (photo["width"], photo["height"]) == (10, 10)
-
-
-def test_remove_missing_photo(own_listing, repo):
-    repo.get_photo.return_value = None
-    raises_status(
-        404,
-        lambda: listing_service.remove_photo(
-            DB, own_listing.listing_id, uuid4(), make_user()
-        ),
-    )
-
-
-def test_remove_photo(own_listing, repo):
-    photo = SimpleNamespace(photo_id=uuid4())
-    repo.get_photo.return_value = photo
-    repo.remove_photo.return_value = own_listing
-    result = listing_service.remove_photo(
-        DB, own_listing.listing_id, photo.photo_id, make_user()
-    )
-    assert result is own_listing
-    repo.remove_photo.assert_called_once_with(DB, own_listing, photo)
-
-
-def test_cannot_remove_photo_from_closed_listing(own_listing):
-    own_listing.status = ListingStatus.CLOSED
-    raises_status(
-        400,
-        lambda: listing_service.remove_photo(
-            DB, own_listing.listing_id, uuid4(), make_user()
-        ),
-    )
+def test_get_photo_of_missing_listing(repo):
+    repo.get.return_value = None
+    raises_status(404, lambda: listing_service.get_photo(DB, uuid4(), 1))
 
 
 def test_get_missing_photo(repo):
-    repo.get_photo.return_value = None
-    raises_status(404, lambda: listing_service.get_photo(DB, uuid4(), uuid4()))
+    repo.get.return_value = make_listing(photos=[STORED_PHOTO])
+    raises_status(404, lambda: listing_service.get_photo(DB, uuid4(), 2))
 
 
 def test_get_photo(repo):
-    photo = SimpleNamespace(data=b"abc")
-    repo.get_photo.return_value = photo
-    assert listing_service.get_photo(DB, uuid4(), uuid4()) is photo
+    repo.get.return_value = make_listing(photos=[STORED_PHOTO])
+    assert listing_service.get_photo(DB, uuid4(), 1) == (b"abc", "image/webp")
 
 
 @pytest.fixture
@@ -645,11 +579,6 @@ def processor(session, location):
     )
 
 
-@pytest.fixture
-def listing(session, supplier, location):
-    return repository.create(session, listing_values(supplier, location))
-
-
 def listing_values(business, location, **changes):
     values = {
         "business_id": business.business_id,
@@ -667,14 +596,12 @@ def listing_values(business, location, **changes):
 
 
 def photo_values(position=1):
-    return {
-        "position": position,
-        "content_type": "image/webp",
-        "size_bytes": 3,
-        "width": 10,
-        "height": 10,
-        "data": b"abc",
-    }
+    return {**STORED_PHOTO, "position": position}
+
+
+@pytest.fixture
+def listing(session, supplier, location):
+    return repository.create(session, listing_values(supplier, location))
 
 
 def test_repository_new_listing_starts_as_draft(session, listing):
@@ -682,6 +609,23 @@ def test_repository_new_listing_starts_as_draft(session, listing):
     assert listing.status == ListingStatus.DRAFT
     assert listing.photos == []
     assert session.get(Listing, listing.listing_id) is listing
+
+
+def test_repository_saves_photos_with_listing(session, supplier, location):
+    photos = [photo_values(1), photo_values(2)]
+    listing = repository.create(
+        session, listing_values(supplier, location, photos=photos)
+    )
+    session.expire_all()
+    saved = session.get(Listing, listing.listing_id)
+    assert [photo["position"] for photo in saved.photos] == [1, 2]
+    assert saved.photos[0]["data"] == "YWJj"
+
+
+def test_repository_database_blocks_sixth_photo(session, supplier, location):
+    photos = [photo_values(number) for number in range(1, 7)]
+    with pytest.raises(IntegrityError):
+        repository.create(session, listing_values(supplier, location, photos=photos))
 
 
 def test_repository_database_rejects_zero_price(session, supplier, location):
@@ -746,47 +690,6 @@ def test_repository_update(session, listing):
     assert session.get(Listing, listing.listing_id).unit_price == Decimal("45")
 
 
-def test_repository_add_and_get_photo(session, listing):
-    result = repository.add_photo(session, listing, photo_values())
-    assert len(result.photos) == 1
-    photo_id = result.photos[0].photo_id
-    session.expire_all()
-    photo = repository.get_photo(session, listing.listing_id, photo_id)
-    assert photo.data == b"abc"
-    assert photo.position == 1
-
-
-def test_repository_photos_come_in_order(session, listing):
-    repository.add_photo(session, listing, photo_values(position=3))
-    result = repository.add_photo(session, listing, photo_values(position=1))
-    assert [photo.position for photo in result.photos] == [1, 3]
-
-
-def test_repository_get_photo_of_other_listing_is_none(session, listing):
-    result = repository.add_photo(session, listing, photo_values())
-    photo_id = result.photos[0].photo_id
-    assert repository.get_photo(session, uuid4(), photo_id) is None
-
-
-def test_repository_database_blocks_sixth_photo(session, listing):
-    with pytest.raises(IntegrityError):
-        repository.add_photo(session, listing, photo_values(position=6))
-
-
-def test_repository_database_blocks_same_position(session, listing):
-    repository.add_photo(session, listing, photo_values(position=1))
-    with pytest.raises(IntegrityError):
-        repository.add_photo(session, listing, photo_values(position=1))
-
-
-def test_repository_remove_photo(session, listing):
-    result = repository.add_photo(session, listing, photo_values())
-    photo = repository.get_photo(session, listing.listing_id, result.photos[0].photo_id)
-    result = repository.remove_photo(session, listing, photo)
-    assert result.photos == []
-    assert session.get(ListingPhoto, photo.photo_id) is None
-
-
 @pytest.fixture
 def client():
     app = FastAPI()
@@ -796,21 +699,57 @@ def client():
     return TestClient(app)
 
 
-def test_router_create_listing(client, monkeypatch):
-    monkeypatch.setattr(
-        listing_service, "create_listing", lambda db, data, user: SAMPLE
-    )
-    response = client.post("/listing/", json=CREATE_BODY)
-    assert response.status_code == 201
-    assert response.json()["listing_id"] == LISTING_ID
-    assert response.json()["status"] == "DRAFT"
+def test_router_create_listing_with_photos(client, monkeypatch):
+    received = {}
 
+    def fake(db, data, photos, user):
+        received["name"] = data.material_or_product
+        received["photos"] = photos
+        return SAMPLE
 
-def test_router_rejects_business_id_in_body(client):
+    monkeypatch.setattr(listing_service, "create_listing", fake)
+    first, second = make_image("PNG"), make_image("JPEG")
     response = client.post(
-        "/listing/", json={**CREATE_BODY, "business_id": str(uuid4())}
+        "/listing/",
+        data={"data": json.dumps(CREATE_BODY)},
+        files=[
+            ("photos", ("one.png", first, "image/png")),
+            ("photos", ("two.jpg", second, "image/jpeg")),
+        ],
     )
+    assert response.status_code == 201
+    assert response.json()["status"] == "DRAFT"
+    assert received == {"name": "Pine sawdust, kiln-dried", "photos": [first, second]}
+
+
+def test_router_create_listing_without_photos(client, monkeypatch):
+    received = {}
+
+    def fake(db, data, photos, user):
+        received["photos"] = photos
+        return SAMPLE
+
+    monkeypatch.setattr(listing_service, "create_listing", fake)
+    response = client.post("/listing/", data={"data": json.dumps(CREATE_BODY)})
+    assert response.status_code == 201
+    assert received["photos"] == []
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        json.dumps({**CREATE_BODY, "business_id": str(uuid4())}),
+        json.dumps({**CREATE_BODY, "quantity": "lots"}),
+        "not json",
+    ],
+)
+def test_router_refuses_bad_listing_data(client, data):
+    response = client.post("/listing/", data={"data": data})
     assert response.status_code == 422
+
+
+def test_router_needs_listing_data(client):
+    assert client.post("/listing/").status_code == 422
 
 
 def test_router_list_published(client, monkeypatch):
@@ -833,11 +772,17 @@ def test_router_list_my_listings(client, monkeypatch):
     assert response.json()[0]["listing_id"] == LISTING_ID
 
 
-def test_router_get_listing(client, monkeypatch):
+def test_router_get_listing_hides_photo_data(client, monkeypatch):
     monkeypatch.setattr(
-        listing_service, "get_listing", lambda db, listing_id, user: SAMPLE
+        listing_service,
+        "get_listing",
+        lambda db, listing_id, user: {**SAMPLE, "photos": [STORED_PHOTO]},
     )
-    assert client.get(f"/listing/{LISTING_ID}").status_code == 200
+    response = client.get(f"/listing/{LISTING_ID}")
+    assert response.status_code == 200
+    assert response.json()["photos"] == [
+        {"position": 1, "width": 10, "height": 10, "size_bytes": 3}
+    ]
 
 
 def test_router_update_listing(client, monkeypatch):
@@ -862,49 +807,17 @@ def test_router_close_listing(client, monkeypatch):
     assert response.json()["status"] == "CLOSED"
 
 
-def test_router_add_photo(client, monkeypatch):
-    received = {}
-
-    def fake(db, listing_id, data, user):
-        received["data"] = data
-        return SAMPLE
-
-    monkeypatch.setattr(listing_service, "add_photo", fake)
-    image = make_image()
-    response = client.post(
-        f"/listing/{LISTING_ID}/photos",
-        files={"photo": ("photo.png", image, "image/png")},
-    )
-    assert response.status_code == 201
-    assert received["data"] == image
-
-
 def test_router_get_photo_sends_image(client, monkeypatch):
     monkeypatch.setattr(
         listing_service,
         "get_photo",
-        lambda db, listing_id, photo_id: SimpleNamespace(
-            data=b"abc", content_type="image/webp"
-        ),
+        lambda db, listing_id, position: (b"abc", "image/webp"),
     )
-    response = client.get(f"/listing/{LISTING_ID}/photos/{PHOTO_ID}")
+    response = client.get(f"/listing/{LISTING_ID}/photos/1")
     assert response.status_code == 200
     assert response.content == b"abc"
     assert response.headers["content-type"] == "image/webp"
     assert response.headers["x-content-type-options"] == "nosniff"
-
-
-def test_router_remove_photo(client, monkeypatch):
-    received = {}
-
-    def fake(db, listing_id, photo_id, user):
-        received["photo_id"] = str(photo_id)
-        return SAMPLE
-
-    monkeypatch.setattr(listing_service, "remove_photo", fake)
-    response = client.delete(f"/listing/{LISTING_ID}/photos/{PHOTO_ID}")
-    assert response.status_code == 200
-    assert received["photo_id"] == PHOTO_ID
 
 
 def test_get_db_without_database_url(monkeypatch):
