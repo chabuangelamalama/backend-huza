@@ -21,6 +21,7 @@ from repositories.listing_repository import listing_repository as repository
 from routers.listing import router
 from schemas.listing import ListingCreate, ListingRead, ListingUpdate
 from services import listing_service
+from pydantic import ValidationError
 
 BUSINESS_ID = uuid4()
 OTHER_BUSINESS_ID = uuid4()
@@ -184,6 +185,44 @@ def test_photo_read_has_url():
     }
     read = ListingRead.model_validate({**SAMPLE, "photos": [photo]})
     assert read.photos[0].url == f"/listing/{LISTING_ID}/photos/{PHOTO_ID}"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"material_or_product": "<script>alert(1)</script>"},
+        {"specifications": {"<grade>": "A"}},
+        {"specifications": {"grade": "A > B"}},
+    ],
+)
+def test_create_refuses_angle_brackets(changes):
+    with pytest.raises(ValidationError):
+        make_create(**changes)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"material_or_product": "<b>Pine</b>"},
+        {"specifications": {"grade": "<A>"}},
+    ],
+)
+def test_update_refuses_angle_brackets(changes):
+    with pytest.raises(ValidationError):
+        ListingUpdate(**changes)
+
+
+def test_update_without_text_is_allowed():
+    update = ListingUpdate(unit_price=Decimal("45"))
+    assert update.material_or_product is None
+    assert update.specifications is None
+
+
+def test_router_refuses_angle_brackets(client):
+    response = client.post(
+        "/listing/", json={**CREATE_BODY, "material_or_product": "<b>Pine</b>"}
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize(

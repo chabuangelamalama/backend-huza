@@ -1,10 +1,18 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StringConstraints,
+    computed_field,
+)
 
 from models.listing import ListingStatus, ListingType, SortingStatus, Stream, Unit
+
+SafeText = Annotated[str, StringConstraints(pattern=r"^[^<>]*$")]
 
 
 class ListingPhotoRead(BaseModel):
@@ -37,15 +45,16 @@ class ListingBase(BaseModel):
 
 
 class ListingCreate(ListingBase):
-    pass
+    material_or_product: SafeText
+    specifications: dict[SafeText, SafeText] = {}
 
 
 class ListingUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     stream: Stream | None = None
-    material_or_product: str | None = None
-    specifications: dict[str, str] | None = None
+    material_or_product: SafeText | None = None
+    specifications: dict[SafeText, SafeText] | None = None
     quantity: Decimal | None = None
     unit: Unit | None = None
     location_id: UUID | None = None
