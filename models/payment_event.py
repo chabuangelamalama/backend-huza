@@ -5,8 +5,6 @@ from .base import Base, uuid_pk
 
 
 class PaymentEvent(Base):
-  
-
     __tablename__ = "payment_event"
 
     event_id = uuid_pk()
@@ -27,7 +25,7 @@ class PaymentEvent(Base):
     )
     event_type = Column(String(50), nullable=False)
     detail = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    
+
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

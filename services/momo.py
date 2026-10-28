@@ -132,7 +132,6 @@ class MomoClient:
             except httpx.HTTPError as e:
                 raise MomoTransient("token request failed") from e
             if r.status_code != 200:
-               
                 log.error(
                     "momo token error product=%s status=%s", product, r.status_code
                 )
@@ -162,7 +161,6 @@ class MomoClient:
         base = self.s.callback_base_url.rstrip("/")
         return f"{base}/payments/momo/callback/{kind}/{reference_id}/{token}"
 
-   
     def _post_money(self, product: Product, path: str, ref: str, body: dict) -> None:
         headers = self._headers(product, ref)
         cb = self._callback_url(product, ref)
@@ -175,8 +173,6 @@ class MomoClient:
         if r.status_code == 202:
             return
         if r.status_code == 409:
-
-           
             return
         if r.status_code >= 500 or r.status_code == 429:
             raise MomoTransient(f"MTN returned {r.status_code}")
@@ -220,7 +216,6 @@ class MomoClient:
             reason=_parse_reason(b),
         )
 
-    
     def request_to_pay(
         self,
         *,
@@ -250,7 +245,7 @@ class MomoClient:
         return self._get_status(
             "collection", f"/collection/v1_0/requesttopay/{reference_id}"
         )
-    
+
     def transfer(
         self,
         *,
@@ -281,7 +276,6 @@ class MomoClient:
             "disbursement", f"/disbursement/v1_0/transfer/{reference_id}"
         )
 
-
     def is_account_active(self, msisdn: str) -> bool:
         """Is this number a registered, active MoMo account? (Collection product)."""
         try:
@@ -297,5 +291,5 @@ class MomoClient:
 
 
 def _check_uuid(value: str) -> None:
-   
+
     uuid.UUID(value)

@@ -14,7 +14,6 @@ from models.payment import PaymentStatus, PayoutStatus, RefundStatus
 
 def _lock(stmt, lock: bool):
     if lock:
-       
         return stmt.with_for_update().execution_options(populate_existing=True)
     return stmt
 

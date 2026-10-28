@@ -73,7 +73,6 @@ class Payment(TimestampMixin, Base):
     paid_at = timestamptz(nullable=True)
     paid_out_at = timestamptz(nullable=True)
 
-
     fee_amount = Column(
         Numeric(19, 4),
         nullable=False,
@@ -83,11 +82,10 @@ class Payment(TimestampMixin, Base):
     payout_amount = Column(Numeric(19, 4), nullable=True)
     payout_failure_reason = Column(String(100), nullable=True)
 
-   
     stock_deducted = Column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    
+
     needs_review = Column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )

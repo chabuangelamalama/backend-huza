@@ -18,7 +18,7 @@ class MomoSettings(BaseSettings):
     base_url: str = "https://sandbox.momodeveloper.mtn.com"
 
     target_environment: str = "sandbox"
-   
+
     currency: str = "EUR"
 
     collection_subscription_key: SecretStr = SecretStr("")
@@ -28,9 +28,8 @@ class MomoSettings(BaseSettings):
     disbursement_api_user: str = ""
     disbursement_api_key: SecretStr = SecretStr("")
 
-    
     callback_base_url: str = ""
-  
+
     callback_secret: SecretStr = SecretStr("")
 
     http_timeout_seconds: float = 15.0
@@ -41,20 +40,19 @@ class MomoSettings(BaseSettings):
     max_attempts_per_payer_phone_per_hour: int = 5
     status_poll_min_interval_seconds: int = 5
 
-    
     payout_trigger: Literal["ON_COMPLETED", "ON_PAID"] = "ON_COMPLETED"
     auto_release_days: int = Field(default=7, ge=1, le=60)
-   
+
     auto_payout: bool = True
 
     huza_fee_percent: Decimal = Field(default=Decimal("0"), ge=0, le=50)
-   
+
     require_registered_payer_phone: bool = True
-  
+
     payout_change_hold_hours: int = Field(default=24, ge=0, le=720)
-    
+
     auto_refund_on_conflict: bool = True
-   
+
     stale_pending_review_hours: int = Field(default=24, ge=1)
 
     @model_validator(mode="after")

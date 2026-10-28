@@ -69,7 +69,6 @@ def safe_reason(raw: str | None) -> str:
     return raw if raw in KNOWN_REASONS else "UNKNOWN"
 
 
-
 class InitiatePaymentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     payer_phone: str = Field(min_length=9, max_length=20)

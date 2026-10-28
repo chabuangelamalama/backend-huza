@@ -31,7 +31,7 @@ from services.momo import (
 log = logging.getLogger("huza.payments")
 
 _NOT_FOUND = ("not_found", "Payment or enquiry not found")
-_RACE_GUARD_SECONDS = 60  
+_RACE_GUARD_SECONDS = 60
 
 _poll_lock = threading.Lock()
 _last_poll: dict[UUID, float] = {}
@@ -135,7 +135,7 @@ class PaymentService:
             self._check_can_pay(actor, enquiry, payer_phone)
             payment = Payment(
                 enquiry_id=enquiry.enquiry_id,
-                amount=enquiry.total_amount, 
+                amount=enquiry.total_amount,
                 payer_phone=payer_phone,
                 reference_id=str(uuid.uuid4()),
             )
@@ -150,7 +150,7 @@ class PaymentService:
             )
             self.db.commit()
         except IntegrityError:
-            self.db.rollback()  
+            self.db.rollback()
             raise PaymentError(
                 409,
                 "payment_in_progress",

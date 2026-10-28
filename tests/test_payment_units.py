@@ -1,4 +1,4 @@
-"""Pure tests (no database): money maths, phone rules, and the live MTN client 
+"""Pure tests (no database): money maths, phone rules, and the live MTN client
 against a mock HTTP layer (httpx.MockTransport). All local simulator references are stripped."""
 
 from decimal import Decimal
@@ -16,7 +16,6 @@ from services.momo import (
     to_momo_amount,
     verify_callback_token,
 )
-
 
 
 SECRET = "s" * 40

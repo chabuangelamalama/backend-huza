@@ -12,7 +12,7 @@ from core.payment_deps import (
 )
 from models.payment import Payment, PaymentStatus, PayoutStatus
 from models.user import User
-from models.business import BusinessRole  
+from models.business import BusinessRole
 from schemas.payment import (
     InitiatePaymentRequest,
     PaymentAdminOut,
@@ -31,7 +31,7 @@ from services.payment_service import PaymentError, PaymentService
 
 router = APIRouter(tags=["payments"])
 
-NO_STORE = {"Cache-Control": "no-store"} 
+NO_STORE = {"Cache-Control": "no-store"}
 
 
 def get_service(
@@ -50,11 +50,11 @@ def _view(payment: Payment, side: str):
 
 def _ensure_admin(user: User):
     """Security Guard: Blocks non-admin requests from hitting administrative routes."""
-    
+
     if not user.business or user.business.business_role != BusinessRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access Denied: Administrative privileges required."
+            detail="Access Denied: Administrative privileges required.",
         )
 
 
@@ -92,7 +92,8 @@ def confirm_receipt(
     return buyer_view(svc.confirm_receipt(user, enquiry_id))
 
 
-# --------------------------------------------------- seller: 
+# --------------------------------------------------- seller:
+
 
 @router.get("/payments/payout-details", response_model=PayoutDetailsOut)
 def get_payout_details(
@@ -209,6 +210,7 @@ def admin_payout(
 
 # ------------------------------------------------- shared reads (all parties)
 
+
 @router.get("/payments", response_model=None)
 def my_payments(
     response: Response,
@@ -220,13 +222,13 @@ def my_payments(
 ):
     """Automatically detects user role from the database connection matrix."""
     response.headers.update(NO_STORE)
-    
+
     # Secure Automation: Infer side from database model fields instead of query strings
     if user.business and user.business.business_role == BusinessRole.SUPPLIER:
         side = "seller"
     else:
         side = "buyer"
-        
+
     rows = svc.my_payments(user, side, payment_status, limit, offset)
     return [_view(p, side) for p in rows]
 
