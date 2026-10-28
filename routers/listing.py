@@ -1,29 +1,19 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
-from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
-
 from core.dependencies import get_current_user
 from database import get_db
 from models.listing import ListingType, Stream
-from schemas.listing import ListingCreate, ListingRead, ListingUpdate
+from schemas.listing import ListingRead, ListingUpdate
 from services import listing_service
 
 router = APIRouter(prefix="/listing", tags=["listing"])
 
 
-def read_listing_data(data: str = Form(...)) -> ListingCreate:
-    try:
-        return ListingCreate.model_validate_json(data)
-    except ValidationError as error:
-        raise RequestValidationError(error.errors(include_url=False))
-
-
 @router.post("/", response_model=ListingRead, status_code=201)
 def create_listing(
-    data: ListingCreate = Depends(read_listing_data),
+    data: str = Form(...),
     photos: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),

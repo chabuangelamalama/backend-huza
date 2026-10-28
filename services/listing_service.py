@@ -4,7 +4,10 @@ from io import BytesIO
 from uuid import UUID
 
 from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
+
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pydantic import ValidationError
 
 from models.business import ApprovalStatus, BusinessRole
 from models.listing import ListingStatus, ListingType, Stream
@@ -165,12 +168,19 @@ def _check_status_change(listing, new_status: ListingStatus, quantity):
         raise _error(400, "Add a quantity above 0 before publishing.")
 
 
-def create_listing(db, data: ListingCreate, photo_files: list[bytes], current_user):
+def read_listing_data(data: str) -> ListingCreate:
+    try:
+        return ListingCreate.model_validate_json(data)
+    except ValidationError as error:
+        raise RequestValidationError(error.errors(include_url=False)) from error
+
+
+def create_listing(db, data: str, photo_files: list[bytes], current_user):
     business = _get_approved_business(db, current_user)
     listing_type = listing_type_for_role(business.business_role)
     if listing_type is None:
         raise _error(403, "Buyers cannot create listings.")
-    values = data.model_dump()
+    values = read_listing_data(data).model_dump()
     _check_values(db, business, values, creating=True)
     values["photos"] = prepare_photos(photo_files)
     values["business_id"] = business.business_id

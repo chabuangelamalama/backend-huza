@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy.exc import IntegrityError
@@ -134,7 +135,7 @@ def make_create(**changes):
 
 def create(data=None, photos=None):
     return listing_service.create_listing(
-        DB, data or make_create(), photos or [], make_user()
+        DB, (data or make_create()).model_dump_json(), photos or [], make_user()
     )
 
 
@@ -352,6 +353,21 @@ def test_create_rejects_unknown_location(repo):
     repo.get_business.return_value = make_business()
     repo.get_location.return_value = None
     raises_status(400, create)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        json.dumps({**CREATE_BODY, "business_id": str(uuid4())}),
+        json.dumps({**CREATE_BODY, "quantity": "lots"}),
+        "not json",
+    ],
+)
+def test_create_refuses_bad_listing_data(repo, data):
+    repo.get_business.return_value = make_business()
+    with pytest.raises(RequestValidationError):
+        listing_service.create_listing(DB, data, [], make_user())
+    repo.create.assert_not_called()
 
 
 def test_get_missing_listing(repo):
@@ -703,7 +719,7 @@ def test_router_create_listing_with_photos(client, monkeypatch):
     received = {}
 
     def fake(db, data, photos, user):
-        received["name"] = data.material_or_product
+        received["name"] = json.loads(data)["material_or_product"]
         received["photos"] = photos
         return SAMPLE
 
@@ -728,24 +744,6 @@ def test_router_create_listing_without_photos(client, monkeypatch):
     def fake(db, data, photos, user):
         received["photos"] = photos
         return SAMPLE
-
-    monkeypatch.setattr(listing_service, "create_listing", fake)
-    response = client.post("/listing/", data={"data": json.dumps(CREATE_BODY)})
-    assert response.status_code == 201
-    assert received["photos"] == []
-
-
-@pytest.mark.parametrize(
-    "data",
-    [
-        json.dumps({**CREATE_BODY, "business_id": str(uuid4())}),
-        json.dumps({**CREATE_BODY, "quantity": "lots"}),
-        "not json",
-    ],
-)
-def test_router_refuses_bad_listing_data(client, data):
-    response = client.post("/listing/", data={"data": data})
-    assert response.status_code == 422
 
 
 def test_router_needs_listing_data(client):
