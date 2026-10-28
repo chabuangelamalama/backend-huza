@@ -313,9 +313,7 @@ def test_create_rejects_bad_values(repo, changes, code):
     repo.get_business.return_value = make_business()
     raises_status(
         code,
-        lambda: listing_service.create_listing(
-            DB, make_create(**changes), make_user()
-        ),
+        lambda: listing_service.create_listing(DB, make_create(**changes), make_user()),
     )
 
 
@@ -391,7 +389,10 @@ def test_update_closed_listing(own_listing):
     raises_status(
         400,
         lambda: listing_service.update_listing(
-            DB, own_listing.listing_id, ListingUpdate(unit_price=Decimal("45")), make_user()
+            DB,
+            own_listing.listing_id,
+            ListingUpdate(unit_price=Decimal("45")),
+            make_user(),
         ),
     )
 
@@ -408,7 +409,10 @@ def test_update_rejects_negative_quantity(own_listing):
     raises_status(
         400,
         lambda: listing_service.update_listing(
-            DB, own_listing.listing_id, ListingUpdate(quantity=Decimal("-1")), make_user()
+            DB,
+            own_listing.listing_id,
+            ListingUpdate(quantity=Decimal("-1")),
+            make_user(),
         ),
     )
 
@@ -677,9 +681,9 @@ def test_repository_get_all_filters(session, supplier, processor, location):
     assert set(repository.get_all(session)) == {sawdust, plastic}
     assert repository.get_all(session, status=ListingStatus.PUBLISHED) == [sawdust]
     assert repository.get_all(session, stream=Stream.PLASTIC) == [plastic]
-    assert repository.get_all(
-        session, listing_type=ListingType.FINISHED_PRODUCT
-    ) == [plastic]
+    assert repository.get_all(session, listing_type=ListingType.FINISHED_PRODUCT) == [
+        plastic
+    ]
     assert set(repository.get_all(session, location_id=location.location_id)) == {
         sawdust,
         plastic,
@@ -754,7 +758,9 @@ def client():
 
 
 def test_router_create_listing(client, monkeypatch):
-    monkeypatch.setattr(listing_service, "create_listing", lambda db, data, user: SAMPLE)
+    monkeypatch.setattr(
+        listing_service, "create_listing", lambda db, data, user: SAMPLE
+    )
     response = client.post("/listing/", json=CREATE_BODY)
     assert response.status_code == 201
     assert response.json()["listing_id"] == LISTING_ID

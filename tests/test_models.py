@@ -188,6 +188,7 @@ def test_all_nine_tables_exist(engine):
         "listing_photo",
     } <= names
 
+
 def test_message_table_does_not_exist(engine):
     assert "message" not in set(inspect(engine).get_table_names())
 

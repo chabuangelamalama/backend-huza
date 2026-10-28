@@ -19,5 +19,5 @@ __all__ = [
     "Payment",
     "PriceGuide",
     "User",
-    "ListingPhoto"
+    "ListingPhoto",
 ]

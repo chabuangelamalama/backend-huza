@@ -10,4 +10,3 @@ app.include_router(listing_router)
 def health() -> dict[str, str]:
     """Let deployment verification confirm that the API is responding."""
     return {"status": "ok"}
-

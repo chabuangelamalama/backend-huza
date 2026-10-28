@@ -33,9 +33,7 @@ def list_published(
     search: str | None = None,
     db: Session = Depends(get_db),
 ):
-    return listing_service.list_published(
-        db, stream, listing_type, location_id, search
-    )
+    return listing_service.list_published(db, stream, listing_type, location_id, search)
 
 
 @router.get("/mine", response_model=list[ListingRead])
