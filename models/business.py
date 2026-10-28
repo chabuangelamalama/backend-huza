@@ -2,19 +2,49 @@ from sqlalchemy import Column, CheckConstraint, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 
-from .base import Base, TimestampMixin, timestamptz, uuid_pk
-from .enums import (
-    ApprovalStatus,
-    approval_status_t,
-    business_role_t,
-    business_type_t,
-    payout_network_t,
-    supplier_kind_t,
-)
+from .base import Base, StrEnum, TimestampMixin, pg_enum, timestamptz, uuid_pk
+
+
+class BusinessRole(StrEnum):
+    SUPPLIER = "SUPPLIER"
+    PROCESSOR = "PROCESSOR"
+    BUYER = "BUYER"
+
+
+class BusinessType(StrEnum):
+    BUSINESS = "BUSINESS"
+    FARM = "FARM"
+    COOPERATIVE = "COOPERATIVE"
+    INSTITUTION = "INSTITUTION"
+    CONSUMER = "CONSUMER"
+
+
+class SupplierKind(StrEnum):
+    PRODUCER = "PRODUCER"
+    COLLECTOR = "COLLECTOR"
+    DEALER = "DEALER"
+
+
+class ApprovalStatus(StrEnum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    SUSPENDED = "SUSPENDED"
+
+
+class PayoutNetwork(StrEnum):
+    MTN_MOMO = "MTN_MOMO"
+
+
+business_role_t = pg_enum(BusinessRole, "business_role")
+business_type_t = pg_enum(BusinessType, "business_type")
+supplier_kind_t = pg_enum(SupplierKind, "supplier_kind")
+approval_status_t = pg_enum(ApprovalStatus, "approval_status")
+payout_network_t = pg_enum(PayoutNetwork, "payout_network")
 
 
 class Business(TimestampMixin, Base):
-    __tablename__ = "businesses"
+    __tablename__ = "business"
 
     business_id = uuid_pk()
     business_legal_name = Column(String(255), nullable=False)
@@ -24,7 +54,7 @@ class Business(TimestampMixin, Base):
     supplier_kind = Column(supplier_kind_t, nullable=True)
     location_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("locations.location_id", ondelete="RESTRICT"),
+        ForeignKey("location.location_id", ondelete="RESTRICT"),
         nullable=False,
     )
     streams = Column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
@@ -40,7 +70,7 @@ class Business(TimestampMixin, Base):
     approved_by = Column(
         UUID(as_uuid=True),
         ForeignKey(
-            "users.user_id",
+            "app_user.user_id",
             ondelete="SET NULL",
             use_alter=True,
             name="fk_businesses_approved_by_users",

@@ -10,32 +10,52 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from .base import Base, TimestampMixin, timestamptz, uuid_pk
-from .enums import (
-    EnquiryStatus,
-    enquiry_status_t,
-    failure_reason_t,
-    unit_t,
-)
+from .base import Base, StrEnum, TimestampMixin, pg_enum, timestamptz, uuid_pk
+from .listing import unit_t
+
+
+class EnquiryStatus(StrEnum):
+    ENQUIRY = "ENQUIRY"
+    AGREED = "AGREED"
+    PAID = "PAID"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    UNSUCCESSFUL = "UNSUCCESSFUL"
+
+
+class FailureReason(StrEnum):
+    NO_PARTNER_FOUND = "NO_PARTNER_FOUND"
+    QUALITY = "QUALITY"
+    PRICE = "PRICE"
+    TRANSPORT = "TRANSPORT"
+    QUANTITY = "QUANTITY"
+    TRUST = "TRUST"
+    PAYMENT = "PAYMENT"
+    DECLINED = "DECLINED"
+    OTHER = "OTHER"
+
+
+enquiry_status_t = pg_enum(EnquiryStatus, "enquiry_status")
+failure_reason_t = pg_enum(FailureReason, "failure_reason")
 
 
 class Enquiry(TimestampMixin, Base):
-    __tablename__ = "enquiries"
+    __tablename__ = "enquiry"
 
     enquiry_id = uuid_pk()
     listing_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("listings.listing_id", ondelete="RESTRICT"),
+        ForeignKey("listing.listing_id", ondelete="RESTRICT"),
         nullable=False,
     )
     buyer_business_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("businesses.business_id", ondelete="RESTRICT"),
+        ForeignKey("business.business_id", ondelete="RESTRICT"),
         nullable=False,
     )
     seller_business_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("businesses.business_id", ondelete="RESTRICT"),
+        ForeignKey("business.business_id", ondelete="RESTRICT"),
         nullable=False,
     )
     status = Column(
@@ -56,7 +76,7 @@ class Enquiry(TimestampMixin, Base):
     __table_args__ = (
         ForeignKeyConstraint(
             ["listing_id", "seller_business_id"],
-            ["listings.listing_id", "listings.business_id"],
+            ["listing.listing_id", "listing.business_id"],
             ondelete="RESTRICT",
             name="fk_enquiries_seller_owns_listing",
         ),
@@ -84,5 +104,4 @@ class Enquiry(TimestampMixin, Base):
     listing = relationship("Listing", foreign_keys=[listing_id])
     buyer = relationship("Business", foreign_keys=[buyer_business_id])
     seller = relationship("Business", foreign_keys=[seller_business_id])
-    messages = relationship("Message", back_populates="enquiry", passive_deletes=True)
     payments = relationship("Payment", back_populates="enquiry")
