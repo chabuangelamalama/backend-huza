@@ -1,6 +1,8 @@
 from fastapi import FastAPI
+from routers.payments import router as payments_router
 
-app = FastAPI(title="Your Project Name", version="0.1.0")
+app = FastAPI(title=" Huza", version="0.1.0")
+app.include_router(payments_router)
 
 
 @app.get("/health")
