@@ -68,7 +68,6 @@ class Listing(TimestampMixin, Base):
     stream = Column(stream_t, nullable=False)
     material_or_product = Column(String(150), nullable=False)
     specifications = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    photos = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     quantity = Column(Numeric(14, 3), nullable=False)
     unit = Column(unit_t, nullable=False)
     location_id = Column(
@@ -87,7 +86,6 @@ class Listing(TimestampMixin, Base):
     published_at = timestamptz(nullable=True)
 
     __table_args__ = (
-        CheckConstraint("jsonb_array_length(photos) <= 5", name="photos_max_5"),
         CheckConstraint("quantity >= 0", name="quantity_non_negative"),
         CheckConstraint("unit_price > 0", name="unit_price_positive"),
         Index("ix_listings_search", "status", "stream", "listing_type", "location_id"),
@@ -101,3 +99,10 @@ class Listing(TimestampMixin, Base):
 
     business = relationship("Business")
     location = relationship("Location")
+    photos = relationship(
+        "ListingPhoto",
+        back_populates="listing",
+        order_by="ListingPhoto.position",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

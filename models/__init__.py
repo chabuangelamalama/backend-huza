@@ -7,6 +7,7 @@ from .notification import Notification
 from .payment import Payment
 from .price_guide import PriceGuide
 from .user import User
+from .listing_photo import ListingPhoto
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "Payment",
     "PriceGuide",
     "User",
+    "ListingPhoto"
 ]

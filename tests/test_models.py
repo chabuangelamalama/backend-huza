@@ -10,6 +10,7 @@ from models import (
     Business,
     Enquiry,
     Listing,
+    ListingPhoto,
     Location,
     Notification,
     Payment,
@@ -173,7 +174,7 @@ def make_price_guide(session, **changes):
     return guide
 
 
-def test_all_eight_tables_exist(engine):
+def test_all_nine_tables_exist(engine):
     names = set(inspect(engine).get_table_names())
     assert {
         "app_user",
@@ -184,8 +185,8 @@ def test_all_eight_tables_exist(engine):
         "enquiry",
         "payment",
         "notification",
+        "listing_photo",
     } <= names
-
 
 def test_message_table_does_not_exist(engine):
     assert "message" not in set(inspect(engine).get_table_names())
@@ -316,16 +317,28 @@ def test_a_business_has_only_one_user(session):
         make_user(session, business)
 
 
+def make_photo(session, listing, position):
+    photo = ListingPhoto(
+        listing_id=listing.listing_id,
+        position=position,
+        size_bytes=1,
+        width=1,
+        height=1,
+        data=b"x",
+    )
+    session.add(photo)
+    session.flush()
+    return photo
+
+
 def test_listing_allows_at_most_five_photos(session):
     location = make_location(session)
     business = make_business(session, location)
     listing = make_listing(session, business, location)
-    listing.photos = [
-        {"storage_key": str(i), "content_type": "image/jpeg", "size_bytes": 1}
-        for i in range(6)
-    ]
+    for position in range(1, 6):
+        make_photo(session, listing, position)
     with pytest.raises(IntegrityError):
-        session.flush()
+        make_photo(session, listing, 6)
 
 
 def test_new_listing_starts_as_draft(session):
