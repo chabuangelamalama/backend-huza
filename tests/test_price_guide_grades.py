@@ -122,7 +122,6 @@ def test_create_rejects_grade_from_another_stream(stream, grade):
     assert "Allowed grades" in str(error.value)
 
 
-
 def test_update_allows_grade_alone_in_schema():
     data = PriceGuideUpdate(grade="green")
     assert data.grade == "green"
@@ -172,9 +171,7 @@ def test_service_rejects_empty_update(monkeypatch, admin):
 
 
 def test_service_rejects_update_that_makes_a_duplicate(monkeypatch, admin):
-    guide = use_guide(
-        monkeypatch, Stream.GLASS, "clear", duplicate=SimpleNamespace()
-    )
+    guide = use_guide(monkeypatch, Stream.GLASS, "clear", duplicate=SimpleNamespace())
     with pytest.raises(HTTPException) as error:
         price_guide_service.update_price_guide(
             None, guide.guide_id, PriceGuideUpdate(grade="green"), admin

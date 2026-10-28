@@ -46,9 +46,7 @@ def _authorise(
         )
 
     if role == "BUSINESS_USER":
-        approval = price_guide_repository.get_approval_status(
-            db, current_user.user_id
-        )
+        approval = price_guide_repository.get_approval_status(db, current_user.user_id)
         if approval != ApprovalStatus.APPROVED:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -96,7 +94,6 @@ def _position_of(price: Decimal | None, guide: PriceGuide | None) -> Position | 
 
 
 class PriceGuideService:
-
     def present(self, guide: PriceGuide, current_user: CurrentUser) -> PriceGuideRead:
         read = PriceGuideRead.model_validate(guide)
         if _role_of(current_user) != "ADMIN":

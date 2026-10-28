@@ -121,7 +121,9 @@ def test_an_admin_sees_who_created_a_guide(client, admin):
     assert response.json()["created_by"] == str(admin.user_id)
 
 
-def test_a_business_user_does_not_see_who_created_a_guide(client, admin, seller, session):
+def test_a_business_user_does_not_see_who_created_a_guide(
+    client, admin, seller, session
+):
     guide = make_guide(session, created_by=admin.user_id)
     one = client.get(f"{URL}/{guide.guide_id}", headers=headers_for(seller))
     assert one.status_code == 200

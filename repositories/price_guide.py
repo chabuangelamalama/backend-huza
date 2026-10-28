@@ -43,7 +43,9 @@ class PriceGuideRepository:
         if stream is not None:
             query = query.where(self.model.stream == stream)
         if material:
-            query = query.where(self.model.material.icontains(material, autoescape=True))
+            query = query.where(
+                self.model.material.icontains(material, autoescape=True)
+            )
         if grade:
             query = query.where(func.lower(self.model.grade) == grade.lower())
         if unit is not None:

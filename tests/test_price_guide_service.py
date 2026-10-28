@@ -51,7 +51,9 @@ def new_guide_data(**changes):
 
 
 class FakeRepository:
-    def __init__(self, guide=None, duplicate=None, best=None, approval=ApprovalStatus.APPROVED):
+    def __init__(
+        self, guide=None, duplicate=None, best=None, approval=ApprovalStatus.APPROVED
+    ):
         self.guide = guide
         self.duplicate = duplicate
         self.best = best
@@ -169,7 +171,9 @@ def test_business_user_without_a_business_is_refused(monkeypatch, seller):
     assert error.value.status_code == 403
 
 
-def test_list_passes_the_filters_and_hides_creator_from_business_users(monkeypatch, seller):
+def test_list_passes_the_filters_and_hides_creator_from_business_users(
+    monkeypatch, seller
+):
     guide = build_saved_guide()
     repository = install(monkeypatch, FakeRepository(guide))
     found = price_guide_service.list_price_guides(
@@ -207,7 +211,9 @@ def test_business_user_cannot_create_a_guide(monkeypatch, seller):
     assert repository.created is None
 
 
-def test_create_checks_for_duplicates_using_stream_material_grade_and_district(monkeypatch, admin):
+def test_create_checks_for_duplicates_using_stream_material_grade_and_district(
+    monkeypatch, admin
+):
     repository = install(monkeypatch, FakeRepository())
     data = new_guide_data(grade="dry", district="Kigali")
     price_guide_service.create_price_guide(None, data, admin)
@@ -261,7 +267,9 @@ def test_update_with_no_fields_gives_400(monkeypatch, admin):
     guide = build_saved_guide()
     install(monkeypatch, FakeRepository(guide))
     with pytest.raises(HTTPException) as error:
-        price_guide_service.update_price_guide(None, guide.guide_id, PriceGuideUpdate(), admin)
+        price_guide_service.update_price_guide(
+            None, guide.guide_id, PriceGuideUpdate(), admin
+        )
     assert error.value.status_code == 400
     assert error.value.detail == "Nothing to update. Send at least one field."
 
@@ -297,9 +305,13 @@ def test_update_with_a_grade_that_does_not_fit_the_stream_gives_422(monkeypatch,
     assert "not valid for" in error.value.detail
 
 
-def test_update_into_a_duplicate_gives_409_and_ignores_the_guide_itself(monkeypatch, admin):
+def test_update_into_a_duplicate_gives_409_and_ignores_the_guide_itself(
+    monkeypatch, admin
+):
     guide = build_saved_guide()
-    repository = install(monkeypatch, FakeRepository(guide, duplicate=build_saved_guide()))
+    repository = install(
+        monkeypatch, FakeRepository(guide, duplicate=build_saved_guide())
+    )
     with pytest.raises(HTTPException) as error:
         price_guide_service.update_price_guide(
             None, guide.guide_id, PriceGuideUpdate(district="Kigali"), admin
@@ -379,10 +391,17 @@ def test_check_hides_creator_from_business_users(monkeypatch, seller):
 
 
 def test_check_is_refused_for_an_unapproved_business(monkeypatch, seller):
-    install(monkeypatch, FakeRepository(best=build_saved_guide(), approval=ApprovalStatus.REJECTED))
+    install(
+        monkeypatch,
+        FakeRepository(best=build_saved_guide(), approval=ApprovalStatus.REJECTED),
+    )
     with pytest.raises(HTTPException) as error:
         price_guide_service.check_price(
-            None, seller, stream=Stream.SAWDUST, material="Pine sawdust", unit=Unit.KILOGRAM
+            None,
+            seller,
+            stream=Stream.SAWDUST,
+            material="Pine sawdust",
+            unit=Unit.KILOGRAM,
         )
     assert error.value.status_code == 403
 

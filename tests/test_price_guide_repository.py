@@ -8,16 +8,16 @@ from tests.price_guide_helpers import guide_values, make_guide
 
 
 def find_best(session, **filters):
-    values = dict(
-        stream=Stream.SAWDUST, material="Pine sawdust", unit=Unit.KILOGRAM
-    )
+    values = dict(stream=Stream.SAWDUST, material="Pine sawdust", unit=Unit.KILOGRAM)
     values.update(filters)
     return price_guide_repository.find_best(session, **values)
 
 
 def test_create_saves_a_guide_that_can_be_found_again(session):
     guide = price_guide_repository.create(session, guide_values())
-    assert price_guide_repository.get(session, guide.guide_id).material == "Pine sawdust"
+    assert (
+        price_guide_repository.get(session, guide.guide_id).material == "Pine sawdust"
+    )
 
 
 def test_get_returns_nothing_for_an_unknown_id(session):
