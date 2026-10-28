@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
-from core.database import get_db
+from database import get_db
 from core.security import create_access_token
 from main import app
 from models.user import UserRole
@@ -109,7 +109,7 @@ def test_a_business_user_cannot_create_a_guide(client, seller):
 
 def test_an_admin_can_create_a_guide(client, admin):
     response = client.post(URL, json=new_guide_body(), headers=headers_for(admin))
-    assert response.status_code == 201
+    assert response.status_code == 200
     body = response.json()
     assert body["material"] == "Pine sawdust"
     assert Decimal(body["min_price"]) == Decimal("30")
@@ -169,7 +169,7 @@ def test_a_token_for_a_user_that_does_not_exist_cannot_create(client):
 def test_creating_with_a_valid_grade_saves_it_in_lowercase(client, admin):
     body = new_guide_body(grade="Dry")
     response = client.post(URL, json=body, headers=headers_for(admin))
-    assert response.status_code == 201
+    assert response.status_code == 200
     assert response.json()["grade"] == "dry"
 
 
@@ -184,13 +184,13 @@ def test_creating_a_glass_guide_with_a_glass_grade_works(client, admin):
         stream="GLASS", material="Cullet", unit="TONNE", grade="clear"
     )
     response = client.post(URL, json=body, headers=headers_for(admin))
-    assert response.status_code == 201
+    assert response.status_code == 200
     assert response.json()["grade"] == "clear"
 
 
 def test_creating_the_same_guide_twice_gives_409(client, admin):
     first = client.post(URL, json=new_guide_body(), headers=headers_for(admin))
-    assert first.status_code == 201
+    assert first.status_code == 200
     second = client.post(URL, json=new_guide_body(), headers=headers_for(admin))
     assert second.status_code == 409
     assert "already exists" in second.json()["detail"]
@@ -209,7 +209,7 @@ def test_the_same_material_with_another_grade_is_allowed(client, admin):
     response = client.post(
         URL, json=new_guide_body(grade="wet"), headers=headers_for(admin)
     )
-    assert response.status_code == 201
+    assert response.status_code == 200
 
 
 def test_the_same_material_in_another_district_is_allowed(client, admin):
@@ -217,7 +217,7 @@ def test_the_same_material_in_another_district_is_allowed(client, admin):
     response = client.post(
         URL, json=new_guide_body(district="Huye"), headers=headers_for(admin)
     )
-    assert response.status_code == 201
+    assert response.status_code == 200
 
 
 def test_the_same_district_in_other_letters_is_a_duplicate(client, admin):
@@ -439,7 +439,7 @@ def test_updating_an_unknown_guide_gives_404(client, admin):
 def test_an_admin_can_delete_a_guide(client, admin, session):
     guide = make_guide(session)
     response = client.delete(f"{URL}/{guide.guide_id}", headers=headers_for(admin))
-    assert response.status_code == 204
+    assert response.status_code == 200
     again = client.get(f"{URL}/{guide.guide_id}", headers=headers_for(admin))
     assert again.status_code == 404
 

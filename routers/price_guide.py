@@ -1,10 +1,10 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from core.database import get_db
+from database import get_db
 from core.security import CurrentUser, get_current_user
 from schemas.price_guide import (
     PriceCheck,
@@ -50,7 +50,7 @@ def get_price_guide(
     return price_guide_service.present(guide, current_user)
 
 
-@router.post("", response_model=PriceGuideRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PriceGuideRead)
 def create_price_guide(
     data: PriceGuideCreate,
     db: Session = Depends(get_db),
@@ -71,11 +71,7 @@ def update_price_guide(
     return price_guide_service.present(guide, current_user)
 
 
-@router.delete(
-    "/{guide_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-)
+@router.delete("/{guide_id}")
 def delete_price_guide(
     guide_id: uuid.UUID,
     db: Session = Depends(get_db),
