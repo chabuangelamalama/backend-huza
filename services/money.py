@@ -1,4 +1,3 @@
-
 from decimal import ROUND_HALF_UP, Decimal
 
 _ONE = Decimal("1")
