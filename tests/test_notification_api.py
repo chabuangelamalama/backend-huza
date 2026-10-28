@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from core.database import get_db
+from database import get_db
 from core.security import create_access_token
 from main import app
 from models.user import UserRole
@@ -225,7 +225,7 @@ def test_reading_a_malformed_id_gives_422(client, owner):
 def test_an_admin_can_create_a_notification(client, admin, owner):
     body = {"user_id": str(owner.user_id), "event_type": "APPROVAL_DECISION"}
     response = client.post(URL, json=body, headers=headers_for(admin))
-    assert response.status_code == 201
+    assert response.status_code == 200
     created = response.json()
     assert created["user_id"] == str(owner.user_id)
     assert created["event_type"] == "APPROVAL_DECISION"
@@ -251,7 +251,7 @@ def test_a_notification_can_point_to_an_enquiry_and_a_listing(
         "listing_id": str(enquiry.listing_id),
     }
     response = client.post(URL, json=body, headers=headers_for(admin))
-    assert response.status_code == 201
+    assert response.status_code == 200
     assert response.json()["enquiry_id"] == str(enquiry.enquiry_id)
     assert response.json()["listing_id"] == str(enquiry.listing_id)
 
@@ -353,7 +353,7 @@ def test_a_user_can_delete_their_notification(client, session, owner):
     notification = make_notification(session, owner)
     path = f"{URL}/{notification.notification_id}"
     response = client.delete(path, headers=headers_for(owner))
-    assert response.status_code == 204
+    assert response.status_code == 200
     again = client.get(path, headers=headers_for(owner))
     assert again.status_code == 404
 

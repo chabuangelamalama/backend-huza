@@ -1,11 +1,11 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from core.database import get_db
 from core.security import CurrentUser, get_current_user
+from database import get_db
 from schemas.notification import (
     NotificationCreate,
     NotificationFilter,
@@ -56,7 +56,7 @@ def get_notification(
     return notification_service.get_notification(db, notification_id, current_user)
 
 
-@router.post("", response_model=NotificationRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=NotificationRead)
 def create_notification(
     data: NotificationCreate,
     db: Session = Depends(get_db),
@@ -74,11 +74,7 @@ def read_notification(
     return notification_service.mark_read(db, notification_id, current_user)
 
 
-@router.delete(
-    "/{notification_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-)
+@router.delete("/{notification_id}")
 def delete_notification(
     notification_id: uuid.UUID,
     db: Session = Depends(get_db),

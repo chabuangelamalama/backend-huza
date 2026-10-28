@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
-from core.database import get_db
+from database import get_db
 from core.security import CurrentUser, get_current_user
 from models.listing import Stream, Unit
 from schemas.price_guide import (

@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
-from core.database import get_db
+from database import get_db
 from core.security import create_access_token
 from main import app
 from models.user import UserRole
