@@ -1,6 +1,8 @@
+"""Payment endpoints (buyer, seller, MTN callback, admin)."""
+
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from core.payment_config import MomoSettings
@@ -10,16 +12,16 @@ from core.payment_deps import (
     get_momo_client,
     get_settings,
 )
-from models.payment import Payment, PaymentStatus, PayoutStatus
-from models.user import User
 from models.business import BusinessRole
+from models.payment import Payment, PaymentStatus, PayoutStatus
+from models.user import User, UserRole
 from schemas.payment import (
     InitiatePaymentRequest,
     PaymentAdminOut,
     PaymentBuyerOut,
+    PaymentEventOut,
     PayoutDetailsOut,
     PayoutDetailsRequest,
-    PaymentEventOut,
     RefundRequest,
     admin_view,
     buyer_view,
@@ -48,10 +50,12 @@ def _view(payment: Payment, side: str):
     return seller_view(payment) if side == "seller" else buyer_view(payment)
 
 
-def _ensure_admin(user: User):
-    """Security Guard: Blocks non-admin requests from hitting administrative routes."""
+def _ensure_admin(user: User) -> None:
+    """Blocks non-admin requests from administrative routes.
 
-    if not user.business or user.business.business_role != BusinessRole.ADMIN:
+    Administrators are users with user_role ADMIN. They have no business.
+    """
+    if user.user_role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access Denied: Administrative privileges required.",
@@ -92,9 +96,8 @@ def confirm_receipt(
     return buyer_view(svc.confirm_receipt(user, enquiry_id))
 
 
-# --------------------------------------------------- seller:
-
-
+# --------------------------------------------------- seller: payout details
+# (declared BEFORE /payments/{payment_id} so "payout-details" is not parsed as a UUID)
 @router.get("/payments/payout-details", response_model=PayoutDetailsOut)
 def get_payout_details(
     response: Response,
@@ -150,7 +153,7 @@ def admin_list_payments(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    _ensure_admin(user)  # Enforce Role Authorization
+    _ensure_admin(user)
     rows = svc.admin_list(
         user, payment_status, payout_status, needs_review, limit, offset
     )
@@ -162,7 +165,7 @@ def admin_sweep(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    _ensure_admin(user)  # Enforce Role Authorization
+    _ensure_admin(user)
     return svc.sweep(user)
 
 
@@ -172,17 +175,19 @@ def admin_reconcile(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    _ensure_admin(user)  # Enforce Role Authorization
+    _ensure_admin(user)
     return admin_view(svc.admin_reconcile(user, payment_id))
 
 
-@router.get("/admin/payments/{payment_id}/events", response_model=list[PaymentEventOut])
+@router.get(
+    "/admin/payments/{payment_id}/events", response_model=list[PaymentEventOut]
+)
 def admin_events(
     payment_id: UUID,
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    _ensure_admin(user)  # Enforce Role Authorization
+    _ensure_admin(user)
     return svc.admin_events(user, payment_id)
 
 
@@ -194,7 +199,7 @@ def admin_refund(
     svc: PaymentService = Depends(get_service),
 ):
     """Return the buyer's money (only before the seller payout is sent)."""
-    _ensure_admin(user)  # Enforce Role Authorization
+    _ensure_admin(user)
     return admin_view(svc.refund_payment(user, payment_id, body.failure_reason))
 
 
@@ -204,31 +209,32 @@ def admin_payout(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    _ensure_admin(user)  # Enforce Role Authorization
+    _ensure_admin(user)
     return admin_view(svc.initiate_payout(user, payment_id))
 
 
 # ------------------------------------------------- shared reads (all parties)
-
-
+# response_model=None: the view class differs per caller (buyer / seller / admin).
 @router.get("/payments", response_model=None)
 def my_payments(
     response: Response,
+    side: str | None = Query(None, pattern="^(buyer|seller)$"),
     payment_status: PaymentStatus | None = Query(None, alias="status"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    """Automatically detects user role from the database connection matrix."""
+    """Your payments. Pass side=buyer or side=seller (processors do both, so they
+    should choose). Without it, suppliers see their sales and everyone else their
+    purchases."""
     response.headers.update(NO_STORE)
-
-    # Secure Automation: Infer side from database model fields instead of query strings
-    if user.business and user.business.business_role == BusinessRole.SUPPLIER:
-        side = "seller"
-    else:
-        side = "buyer"
-
+    if side is None:
+        business = user.business
+        is_supplier = (
+            business is not None and business.business_role == BusinessRole.SUPPLIER
+        )
+        side = "seller" if is_supplier else "buyer"
     rows = svc.my_payments(user, side, payment_status, limit, offset)
     return [_view(p, side) for p in rows]
 

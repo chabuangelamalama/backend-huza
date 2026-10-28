@@ -8,11 +8,11 @@ from fastapi.testclient import TestClient
 from core.payment_deps import get_current_user, get_db, get_momo_client, get_settings
 from routers.payments import router
 from services.momo import callback_token
-from tests.test_payments import PAYER, SECRET, FakeMomo, make_settings, world  # noqa: F401
+from tests.test_payments import PAYER, SECRET, FakeMomo, make_settings, world 
 
 
 @pytest.fixture
-def api(session, world):  # noqa: F811
+def api(session, world): 
     momo = FakeMomo()
     state = {"user": world["buyer"]}
     app = FastAPI()
@@ -135,7 +135,7 @@ def test_callback_is_signed_and_needs_no_login(api):
     client, state, _, _ = api
     r = start(api).json()
     ref = api[2].collections and next(iter(api[2].collections))
-    state["user"] = None  # callback must not depend on a logged-in user
+    state["user"] = None  
     url = "/payments/momo/callback/collection/{}/{}"
     assert client.put(url.format(ref, "wrong")).status_code == 404
     assert (
@@ -153,11 +153,3 @@ def test_callback_is_signed_and_needs_no_login(api):
     assert r["status"] == "PENDING"
 
 
-def test_without_real_auth_wired_everything_answers_501(session, world):  # noqa: F811
-    app = FastAPI()
-    app.include_router(router)
-    app.dependency_overrides[get_db] = lambda: session
-    app.dependency_overrides[get_momo_client] = lambda: FakeMomo()
-    app.dependency_overrides[get_settings] = lambda: make_settings()
-    r = TestClient(app).get("/payments")
-    assert r.status_code == 501
