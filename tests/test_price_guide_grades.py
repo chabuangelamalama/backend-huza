@@ -122,10 +122,6 @@ def test_create_rejects_grade_from_another_stream(stream, grade):
     assert "Allowed grades" in str(error.value)
 
 
-def test_update_checks_grade_when_stream_is_sent():
-    with pytest.raises(ValidationError):
-        PriceGuideUpdate(stream=Stream.PLASTIC, grade="green")
-
 
 def test_update_allows_grade_alone_in_schema():
     data = PriceGuideUpdate(grade="green")

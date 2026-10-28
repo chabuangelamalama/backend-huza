@@ -136,20 +136,16 @@ def test_find_duplicate_finds_the_same_guide_in_any_case(session):
         stream=Stream.SAWDUST,
         material="PINE SAWDUST",
         grade="dry",
-        unit=Unit.KILOGRAM,
         district=None,
-        source_date=guide.source_date,
     )
     assert found.guide_id == guide.guide_id
 
 
 def test_find_duplicate_ignores_a_different_grade_or_district(session):
-    guide = make_guide(session, grade="dry", district=None)
+    make_guide(session, grade="dry", district=None)
     same = dict(
         stream=Stream.SAWDUST,
         material="Pine sawdust",
-        unit=Unit.KILOGRAM,
-        source_date=guide.source_date,
     )
     other_grade = price_guide_repository.find_duplicate(
         session, grade="wet", district=None, **same
@@ -168,9 +164,7 @@ def test_find_duplicate_can_skip_the_guide_being_updated(session):
         stream=Stream.SAWDUST,
         material="Pine sawdust",
         grade="dry",
-        unit=Unit.KILOGRAM,
         district=None,
-        source_date=guide.source_date,
         exclude_id=guide.guide_id,
     )
     assert found is None

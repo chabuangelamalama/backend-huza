@@ -31,7 +31,7 @@ def list_price_guides(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    return price_guide_service.list_price_guides(
+    guides = price_guide_service.list_price_guides(
         db,
         current_user,
         stream=stream,
@@ -42,6 +42,7 @@ def list_price_guides(
         limit=limit,
         offset=offset,
     )
+    return [price_guide_service.present(guide, current_user) for guide in guides]
 
 
 @router.get("/lookup", response_model=PriceCheck)
@@ -73,7 +74,8 @@ def get_price_guide(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    return price_guide_service.get_price_guide(db, guide_id, current_user)
+    guide = price_guide_service.get_price_guide(db, guide_id, current_user)
+    return price_guide_service.present(guide, current_user)
 
 
 @router.post("", response_model=PriceGuideRead, status_code=status.HTTP_201_CREATED)
@@ -82,7 +84,8 @@ def create_price_guide(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    return price_guide_service.create_price_guide(db, data, current_user)
+    guide = price_guide_service.create_price_guide(db, data, current_user)
+    return price_guide_service.present(guide, current_user)
 
 
 @router.patch("/{guide_id}", response_model=PriceGuideRead)
@@ -92,7 +95,8 @@ def update_price_guide(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    return price_guide_service.update_price_guide(db, guide_id, data, current_user)
+    guide = price_guide_service.update_price_guide(db, guide_id, data, current_user)
+    return price_guide_service.present(guide, current_user)
 
 
 @router.delete(

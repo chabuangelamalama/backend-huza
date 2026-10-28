@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.config import Settings, get_settings
-from models.enums import UserRole
+from models.user import UserRole
 
 bearer = HTTPBearer(auto_error=False)
 

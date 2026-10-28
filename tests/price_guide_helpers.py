@@ -3,6 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 from models import PriceGuide, User
+from models.business import ApprovalStatus
 from models.listing import Stream, Unit
 from models.user import UserRole
 from tests.test_models import make_business, make_location
@@ -42,10 +43,15 @@ def make_admin(session, email="diane@huza.rw"):
     return user
 
 
-def make_business_user(session, email="jean@example.rw"):
+def make_business_user(
+    session, email="jean@example.rw", approval=ApprovalStatus.APPROVED
+):
     business = make_business(
         session, make_location(session, osm_id=uuid.uuid4().int % 10**9)
     )
+    if approval is not None:
+        business.approval_status = approval
+        session.flush()
     user = User(
         business_id=business.business_id,
         first_name="Jean",

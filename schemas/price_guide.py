@@ -31,6 +31,11 @@ def lowercase_grade(value: str | None) -> str | None:
     return value.lower()
 
 
+def check_range(min_price: Decimal, max_price: Decimal) -> None:
+    if max_price < min_price:
+        raise ValueError("Max price cannot be below min price")
+
+
 def check_grade(stream: Stream, grade: str | None) -> None:
     if grade is None:
         return
@@ -72,13 +77,8 @@ class PriceGuideCreate(PriceGuideFields):
         return reject_future_date(value)
 
     @model_validator(mode="after")
-    def max_price_not_below_min_price(self) -> "PriceGuideCreate":
-        if self.max_price < self.min_price:
-            raise ValueError("Max price cannot be below min price")
-        return self
-
-    @model_validator(mode="after")
-    def grade_matches_stream(self) -> "PriceGuideCreate":
+    def check_rules(self) -> "PriceGuideCreate":
+        check_range(self.min_price, self.max_price)
         check_grade(self.stream, self.grade)
         return self
 
@@ -111,12 +111,6 @@ class PriceGuideUpdate(BaseModel):
     def source_date_not_in_future(cls, value: date | None) -> date | None:
         return reject_future_date(value)
 
-    @model_validator(mode="after")
-    def grade_matches_stream(self) -> "PriceGuideUpdate":
-        if self.stream is not None and self.grade is not None:
-            check_grade(self.stream, self.grade)
-        return self
-
 
 class PriceGuideRead(PriceGuideFields):
     model_config = ConfigDict(from_attributes=True)
@@ -130,5 +124,3 @@ class PriceGuideRead(PriceGuideFields):
 class PriceCheck(BaseModel):
     guide: PriceGuideRead | None
     position: Position | None
-    is_outdated: bool = False
-    message: str | None = None

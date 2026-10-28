@@ -1,5 +1,4 @@
 import uuid
-from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -9,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from core.security import CurrentUser
 from models import PriceGuide
+from models.business import ApprovalStatus
 from models.listing import Stream, Unit
 from repositories.price_guide import price_guide_repository
 from schemas.price_guide import (
@@ -18,12 +18,11 @@ from schemas.price_guide import (
     PriceGuideRead,
     PriceGuideUpdate,
     check_grade,
+    check_range,
 )
 
 NULLABLE_FIELDS = {"grade", "sample_size", "district"}
-DUPLICATE_FIELDS = {"stream", "material", "grade", "unit", "district", "source_date"}
-READ_ROLES = {"ADMIN", "BUSINESS_USER"}
-STALE_AFTER_DAYS = 180
+DUPLICATE_FIELDS = {"stream", "material", "grade", "district"}
 
 
 def _role_of(current_user: CurrentUser) -> str:
@@ -31,23 +30,36 @@ def _role_of(current_user: CurrentUser) -> str:
     return str(getattr(role, "value", role)).upper()
 
 
-def _require_reader(current_user: CurrentUser) -> None:
-    if _role_of(current_user) not in READ_ROLES:
+def _authorise(
+    db: Session,
+    current_user: CurrentUser,
+    action: str,
+    admin_only: bool = False,
+) -> None:
+    role = _role_of(current_user)
+    allowed_roles = {"ADMIN"} if admin_only else {"ADMIN", "BUSINESS_USER"}
+
+    if role not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Your account cannot view price guides.",
+            detail=f"Access denied: a {role.lower()} cannot {action}.",
         )
 
-
-def _require_editor(current_user: CurrentUser) -> None:
-    if _role_of(current_user) != "ADMIN":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only an admin can change price guides.",
+    if role == "BUSINESS_USER":
+        approval = price_guide_repository.get_approval_status(
+            db, current_user.user_id
         )
+        if approval != ApprovalStatus.APPROVED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Access denied: your business is not approved, "
+                    f"so you cannot {action}."
+                ),
+            )
 
 
-def _get_or_404(db: Session, guide_id: uuid.UUID) -> PriceGuide:
+def _find_guide(db: Session, guide_id: uuid.UUID) -> PriceGuide:
     guide = price_guide_repository.get(db, guide_id)
     if guide is None:
         raise HTTPException(
@@ -59,31 +71,16 @@ def _get_or_404(db: Session, guide_id: uuid.UUID) -> PriceGuide:
 
 def _reject_duplicate(
     db: Session,
-    *,
-    stream: Stream,
-    material: str,
-    grade: str | None,
-    unit: Unit,
-    district: str | None,
-    source_date: date,
+    values: dict[str, Any],
     exclude_id: uuid.UUID | None = None,
 ) -> None:
-    found = price_guide_repository.find_duplicate(
-        db,
-        stream=stream,
-        material=material,
-        grade=grade,
-        unit=unit,
-        district=district,
-        source_date=source_date,
-        exclude_id=exclude_id,
-    )
+    found = price_guide_repository.find_duplicate(db, exclude_id=exclude_id, **values)
     if found is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "A price guide with the same stream, material, grade, unit, "
-                "district and source date already exists."
+                "A price guide for this stream, material, grade and district "
+                "already exists. Update it instead."
             ),
         )
 
@@ -98,26 +95,13 @@ def _position_of(price: Decimal | None, guide: PriceGuide | None) -> Position | 
     return "within"
 
 
-def _money(value: Decimal) -> str:
-    return f"{value.normalize():f}"
-
-
-def _describe(position: Position | None, guide: PriceGuide, outdated: bool) -> str:
-    usual = f"{_money(guide.min_price)} to {_money(guide.max_price)}"
-    if position == "below":
-        text = f"Your price is below the usual range of {usual}."
-    elif position == "above":
-        text = f"Your price is above the usual range of {usual}."
-    elif position == "within":
-        text = f"Your price is within the usual range of {usual}."
-    else:
-        text = f"The usual range is {usual}."
-    if outdated:
-        text += " This guide is over 6 months old, so prices may have changed."
-    return text
-
-
 class PriceGuideService:
+
+    def present(self, guide: PriceGuide, current_user: CurrentUser) -> PriceGuideRead:
+        read = PriceGuideRead.model_validate(guide)
+        if _role_of(current_user) != "ADMIN":
+            read.created_by = None
+        return read
 
     def list_price_guides(
         self,
@@ -125,7 +109,7 @@ class PriceGuideService:
         current_user: CurrentUser,
         **filters: Any,
     ):
-        _require_reader(current_user)
+        _authorise(db, current_user, "view price guides")
         return price_guide_repository.search(db, **filters)
 
     def get_price_guide(
@@ -134,8 +118,8 @@ class PriceGuideService:
         guide_id: uuid.UUID,
         current_user: CurrentUser,
     ):
-        _require_reader(current_user)
-        return _get_or_404(db, guide_id)
+        _authorise(db, current_user, "view price guides")
+        return _find_guide(db, guide_id)
 
     def create_price_guide(
         self,
@@ -143,19 +127,10 @@ class PriceGuideService:
         data: PriceGuideCreate,
         current_user: CurrentUser,
     ):
-        _require_editor(current_user)
-
-        _reject_duplicate(
-            db,
-            stream=data.stream,
-            material=data.material,
-            grade=data.grade,
-            unit=data.unit,
-            district=data.district,
-            source_date=data.source_date,
-        )
+        _authorise(db, current_user, "create price guides", admin_only=True)
 
         guide_data = data.model_dump()
+        _reject_duplicate(db, {name: guide_data[name] for name in DUPLICATE_FIELDS})
         guide_data["created_by"] = current_user.user_id
 
         try:
@@ -173,9 +148,9 @@ class PriceGuideService:
         data: PriceGuideUpdate,
         current_user: CurrentUser,
     ):
-        _require_editor(current_user)
+        _authorise(db, current_user, "update price guides", admin_only=True)
 
-        guide = _get_or_404(db, guide_id)
+        guide = _find_guide(db, guide_id)
 
         changes = {
             name: value
@@ -189,31 +164,23 @@ class PriceGuideService:
                 detail="Nothing to update. Send at least one field.",
             )
 
-        new_min = changes.get("min_price", guide.min_price)
-        new_max = changes.get("max_price", guide.max_price)
-
-        if new_max < new_min:
-            raise HTTPException(
-                status_code=422,
-                detail="Max price cannot be below min price.",
-            )
-
         merged = {
             name: changes[name] if name in changes else getattr(guide, name)
             for name in DUPLICATE_FIELDS
         }
 
-        if "stream" in changes or "grade" in changes:
-            try:
+        try:
+            check_range(
+                changes.get("min_price", guide.min_price),
+                changes.get("max_price", guide.max_price),
+            )
+            if "stream" in changes or "grade" in changes:
                 check_grade(merged["stream"], merged["grade"])
-            except ValueError as error:
-                raise HTTPException(
-                    status_code=422,
-                    detail=str(error),
-                ) from None
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
 
         if DUPLICATE_FIELDS & changes.keys():
-            _reject_duplicate(db, **merged, exclude_id=guide.guide_id)
+            _reject_duplicate(db, merged, exclude_id=guide.guide_id)
 
         return price_guide_repository.update(db, guide, changes)
 
@@ -223,8 +190,8 @@ class PriceGuideService:
         guide_id: uuid.UUID,
         current_user: CurrentUser,
     ):
-        _require_editor(current_user)
-        guide = _get_or_404(db, guide_id)
+        _authorise(db, current_user, "delete price guides", admin_only=True)
+        guide = _find_guide(db, guide_id)
         price_guide_repository.delete(db, guide)
 
     def check_price(
@@ -239,7 +206,7 @@ class PriceGuideService:
         price: Decimal | None = None,
         district: str | None = None,
     ) -> PriceCheck:
-        _require_reader(current_user)
+        _authorise(db, current_user, "look up prices")
 
         guide = price_guide_repository.find_best(
             db,
@@ -251,22 +218,11 @@ class PriceGuideService:
         )
 
         if guide is None:
-            return PriceCheck(
-                guide=None,
-                position=None,
-                message="No price guide found for this material.",
-            )
-
-        outdated = guide.source_date < date.today() - timedelta(
-            days=STALE_AFTER_DAYS
-        )
-        position = _position_of(price, guide)
+            return PriceCheck(guide=None, position=None)
 
         return PriceCheck(
-            guide=PriceGuideRead.model_validate(guide),
-            position=position,
-            is_outdated=outdated,
-            message=_describe(position, guide, outdated),
+            guide=self.present(guide, current_user),
+            position=_position_of(price, guide),
         )
 
 

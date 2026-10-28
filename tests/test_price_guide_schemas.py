@@ -4,8 +4,8 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from models.enums import Stream, Unit
-from schemas.price_guides import PriceGuideCreate, PriceGuideUpdate
+from models.listing import Stream, Unit
+from schemas.price_guide import PriceGuideCreate, PriceGuideUpdate
 
 
 def payload(**changes):
