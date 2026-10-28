@@ -30,7 +30,7 @@ def create_access_token(
         "role": role.value,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes),
     }
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
 def unauthorized(detail: str) -> HTTPException:
@@ -50,7 +50,7 @@ def get_current_user(
     try:
         payload = jwt.decode(
             credentials.credentials,
-            settings.secret_key,
+            settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
         )
         return CurrentUser(
