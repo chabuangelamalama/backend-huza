@@ -8,11 +8,11 @@ from fastapi.testclient import TestClient
 from core.payment_deps import get_current_user, get_db, get_momo_client, get_settings
 from routers.payments import router
 from services.momo import callback_token
-from tests.test_payments import PAYER, SECRET, FakeMomo, make_settings, world 
+from tests.test_payments import PAYER, SECRET, FakeMomo, make_settings
 
 
 @pytest.fixture
-def api(session, world): 
+def api(session, world):
     momo = FakeMomo()
     state = {"user": world["buyer"]}
     app = FastAPI()
@@ -135,7 +135,7 @@ def test_callback_is_signed_and_needs_no_login(api):
     client, state, _, _ = api
     r = start(api).json()
     ref = api[2].collections and next(iter(api[2].collections))
-    state["user"] = None  
+    state["user"] = None
     url = "/payments/momo/callback/collection/{}/{}"
     assert client.put(url.format(ref, "wrong")).status_code == 404
     assert (
@@ -151,5 +151,3 @@ def test_callback_is_signed_and_needs_no_login(api):
         == 200
     )
     assert r["status"] == "PENDING"
-
-

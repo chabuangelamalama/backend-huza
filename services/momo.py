@@ -1,12 +1,3 @@
-"""Thin client for the MTN MoMo Open API (Collection + Disbursement).
-
-Rules this client follows:
-  * Base URL, keys and callback URL come ONLY from settings (no user-supplied URLs: SSRF).
-  * TLS verification is never disabled. Every call has a timeout.
-  * Secrets, tokens and phone numbers are never logged.
-  * Anything returned by MTN is treated as untrusted and validated.
-"""
-
 import hashlib
 import hmac
 import logging

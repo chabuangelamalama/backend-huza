@@ -179,9 +179,7 @@ def admin_reconcile(
     return admin_view(svc.admin_reconcile(user, payment_id))
 
 
-@router.get(
-    "/admin/payments/{payment_id}/events", response_model=list[PaymentEventOut]
-)
+@router.get("/admin/payments/{payment_id}/events", response_model=list[PaymentEventOut])
 def admin_events(
     payment_id: UUID,
     user: User = Depends(get_current_user),

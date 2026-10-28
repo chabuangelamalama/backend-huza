@@ -1,4 +1,3 @@
-"""Money rules for Rwandan francs (RWF has no minor unit, so every amount is whole)."""
 
 from decimal import ROUND_HALF_UP, Decimal
 

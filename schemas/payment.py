@@ -1,10 +1,3 @@
-"""Request/response models for payments.
-
-Three response shapes so each party only sees what it needs (OWASP API3):
-  buyer  -> own payment status, masked payer phone, friendly failure message
-  seller -> amount, payment status, payout status (never the buyer's phone)
-  admin  -> everything operational (still a masked phone)
-"""
 
 import re
 from datetime import datetime

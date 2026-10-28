@@ -1,14 +1,3 @@
-"""In-process stand-in for MTN MoMo, for LOCAL DEVELOPMENT AND DEMOS ONLY.
-
-Enable with MOMO_MODE=simulated (refused when MOMO_ENVIRONMENT=production).
-State lives in memory: it is lost on restart and not shared between workers.
-
-Behaviour is decided by the LAST DIGITS of the phone number:
-  ...000  the customer rejects the prompt (payment) / number not found (payout, refund)
-  ...111  the customer never answers: payment stays PENDING forever
-  others  succeed after MOMO_SIMULATOR_DELAY_SECONDS
-There are no callbacks; payments settle when polled or swept, like the real fallback.
-"""
 
 import time
 import uuid
