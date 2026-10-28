@@ -5,6 +5,16 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from models import Base
+from models.business import ApprovalStatus, BusinessRole, PayoutNetwork
+from models.enquiry import EnquiryStatus
+from models.user import UserRole
+from tests.test_models import (
+    make_business,
+    make_enquiry,
+    make_listing,
+    make_location,
+    make_user,
+)
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -35,3 +45,43 @@ def session(engine):
     db.close()
     transaction.rollback()
     connection.close()
+
+
+@pytest.fixture
+def world(session):
+    loc = make_location(session)
+    seller_b = make_business(
+        session,
+        loc,
+        approval_status=ApprovalStatus.APPROVED,
+        payout_phone="250788000111",
+        payout_network=PayoutNetwork.MTN_MOMO,
+    )
+    buyer_b = make_business(
+        session,
+        loc,
+        role=BusinessRole.BUYER,
+        approval_status=ApprovalStatus.APPROVED,
+        contact_email="b@example.rw",
+    )
+    other_b = make_business(
+        session,
+        loc,
+        role=BusinessRole.BUYER,
+        approval_status=ApprovalStatus.APPROVED,
+        contact_email="o@example.rw",
+    )
+    listing = make_listing(session, seller_b, loc)
+    enquiry = make_enquiry(session, listing, buyer_b, status=EnquiryStatus.AGREED)
+    data = dict(
+        seller=make_user(session, seller_b),
+        buyer=make_user(session, buyer_b, phone="250788123456"),
+        other=make_user(session, other_b, phone="250788777777"),
+        admin=make_user(session, role=UserRole.ADMIN),
+        seller_b=seller_b,
+        buyer_b=buyer_b,
+        listing=listing,
+        enquiry=enquiry,
+    )
+    session.commit()
+    return data
