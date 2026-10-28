@@ -18,21 +18,12 @@ class NotificationRepository:
     def get(self, db: Session, notification_id: uuid.UUID):
         return db.get(self.model, notification_id)
 
-    def search(
-        self,
-        db: Session,
-        user_id: uuid.UUID,
-        *,
-        unread_only: bool = False,
-        event_type=None,
-        limit: int = 50,
-        offset: int = 0,
-    ):
+    def search(self, db: Session, user_id: uuid.UUID, limit=50, offset=0, **filters):
         query = select(self.model).where(self.model.user_id == user_id)
-        if unread_only:
+        if filters.get("unread_only"):
             query = query.where(self.model.read_at.is_(None))
-        if event_type is not None:
-            query = query.where(self.model.event_type == event_type)
+        if filters.get("event_type") is not None:
+            query = query.where(self.model.event_type == filters["event_type"])
         query = (
             query.order_by(self.model.created_at.desc(), self.model.notification_id)
             .limit(limit)

@@ -1,13 +1,14 @@
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from core.database import get_db
 from core.security import CurrentUser, get_current_user
-from models.notification import NotificationEvent
 from schemas.notification import (
     NotificationCreate,
+    NotificationFilter,
     NotificationRead,
     UnreadCount,
     UpdatedCount,
@@ -19,20 +20,12 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 @router.get("", response_model=list[NotificationRead])
 def list_notifications(
-    unread_only: bool = False,
-    event_type: NotificationEvent | None = None,
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    filters: Annotated[NotificationFilter, Query()],
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     return notification_service.list_notifications(
-        db,
-        current_user,
-        unread_only=unread_only,
-        event_type=event_type,
-        limit=limit,
-        offset=offset,
+        db, current_user, **filters.model_dump()
     )
 
 
