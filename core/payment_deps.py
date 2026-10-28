@@ -4,26 +4,26 @@ from functools import lru_cache
 from fastapi import HTTPException, Depends
 from sqlalchemy.orm import Session
 
-from core.payment_config import MomoSettings, get_momo_settings
+from core.payment_config import MpesaSettings, get_mpesa_settings
 from database import get_db
 from models import User
 
-from services.momo import MomoClient, MomoGateway
+from services.mpesa import MpesaClient, MpesaGateway
 
 
 @lru_cache
-def _momo_client() -> MomoGateway:
-    settings = get_momo_settings()
+def _mpesa_client() -> MpesaGateway:
+    settings = get_mpesa_settings()
 
-    return MomoClient(settings)
-
-
-def get_momo_client() -> MomoGateway:
-    return _momo_client()
+    return MpesaClient(settings)
 
 
-def get_settings() -> MomoSettings:
-    return get_momo_settings()
+def get_mpesa_client() -> MpesaGateway:
+    return _mpesa_client()
+
+
+def get_settings() -> MpesaSettings:
+    return get_mpesa_settings()
 
 
 def get_current_user(db: Session = Depends(get_db)) -> User:

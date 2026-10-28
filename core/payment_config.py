@@ -6,31 +6,25 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class MomoSettings(BaseSettings):
+class MpesaSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="MOMO_", env_file=".env", extra="ignore"
+        env_prefix="MPESA_", env_file=".env", extra="ignore"
     )
 
     environment: Literal["sandbox", "production"] = "sandbox"
 
     mode: Literal["live", "simulated"] = "live"
     simulator_delay_seconds: float = 5.0
-    base_url: str = "https://sandbox.momodeveloper.mtn.com"
+    base_url: str = "https://safaricom.co.ke"
 
-    target_environment: str = "sandbox"
+    currency: str = "KES"
 
-    currency: str = "EUR"
-
-    collection_subscription_key: SecretStr = SecretStr("")
-    collection_api_user: str = ""
-    collection_api_key: SecretStr = SecretStr("")
-    disbursement_subscription_key: SecretStr = SecretStr("")
-    disbursement_api_user: str = ""
-    disbursement_api_key: SecretStr = SecretStr("")
+    consumer_key: SecretStr = SecretStr("")
+    consumer_secret: SecretStr = SecretStr("")
+    express_shortcode: str = ""
+    express_passkey: SecretStr = SecretStr("")
 
     callback_base_url: str = ""
-
-    callback_secret: SecretStr = SecretStr("")
 
     http_timeout_seconds: float = 15.0
 
@@ -56,35 +50,31 @@ class MomoSettings(BaseSettings):
     stale_pending_review_hours: int = Field(default=24, ge=1)
 
     @model_validator(mode="after")
-    def _validate(self) -> "MomoSettings":
+    def _validate(self) -> "MpesaSettings":
         if self.environment == "production":
             problems = []
             if self.mode != "live":
-                problems.append("MOMO_MODE must be live in production")
+                problems.append("MPESA_MODE must be live in production")
             if not self.base_url.startswith("https://"):
-                problems.append("MOMO_BASE_URL must be https")
-            if self.currency != "RWF":
-                problems.append("MOMO_CURRENCY must be RWF in production")
+                problems.append("MPESA_BASE_URL must be https")
+            if self.currency != "KES":
+                problems.append("MPESA_CURRENCY must be KES in production")
             if not self.callback_base_url.startswith("https://"):
-                problems.append("MOMO_CALLBACK_BASE_URL must be https")
-            if len(self.callback_secret.get_secret_value()) < 32:
-                problems.append("MOMO_CALLBACK_SECRET must be at least 32 chars")
+                problems.append("MPESA_CALLBACK_BASE_URL must be https")
             for name in (
-                "collection_subscription_key",
-                "collection_api_key",
-                "disbursement_subscription_key",
-                "disbursement_api_key",
+                "consumer_key",
+                "consumer_secret",
+                "express_passkey",
             ):
                 if not getattr(self, name).get_secret_value():
-                    problems.append(f"MOMO_{name.upper()} is missing")
-            for name in ("collection_api_user", "disbursement_api_user"):
-                if not getattr(self, name):
-                    problems.append(f"MOMO_{name.upper()} is missing")
+                    problems.append(f"MPESA_{name.upper()} is missing")
+            if not self.express_shortcode:
+                problems.append("MPESA_EXPRESS_SHORTCODE is missing")
             if problems:
                 raise ValueError("; ".join(problems))
         return self
 
 
 @lru_cache
-def get_momo_settings() -> MomoSettings:
-    return MomoSettings()
+def get_mpesa_settings() -> MpesaSettings:
+    return MpesaSettings()

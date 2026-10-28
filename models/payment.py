@@ -53,9 +53,9 @@ class Payment(TimestampMixin, Base):
         nullable=False,
     )
     amount = Column(Numeric(19, 4), nullable=False)
-    payer_phone = Column(Text, nullable=False)
+    phone_number = Column(Text, nullable=False)
     reference_id = Column(String(100), nullable=False, unique=True)
-    momo_transaction_id = Column(String(100), nullable=True)
+    mpesa_receipt_number = Column(String(100), nullable=True)
     status = Column(
         payment_status_t,
         nullable=False,

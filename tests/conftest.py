@@ -54,29 +54,29 @@ def world(session):
         session,
         loc,
         approval_status=ApprovalStatus.APPROVED,
-        payout_phone="250788000111",
-        payout_network=PayoutNetwork.MTN_MOMO,
+        payout_phone="254712000111",
+        payout_network=PayoutNetwork.MPESA,
     )
     buyer_b = make_business(
         session,
         loc,
         role=BusinessRole.BUYER,
         approval_status=ApprovalStatus.APPROVED,
-        contact_email="b@example.rw",
+        contact_email="b@example.ke",
     )
     other_b = make_business(
         session,
         loc,
         role=BusinessRole.BUYER,
         approval_status=ApprovalStatus.APPROVED,
-        contact_email="o@example.rw",
+        contact_email="o@example.ke",
     )
     listing = make_listing(session, seller_b, loc)
     enquiry = make_enquiry(session, listing, buyer_b, status=EnquiryStatus.AGREED)
     data = dict(
         seller=make_user(session, seller_b),
-        buyer=make_user(session, buyer_b, phone="250788123456"),
-        other=make_user(session, other_b, phone="250788777777"),
+        buyer=make_user(session, buyer_b, phone="254712345678"),
+        other=make_user(session, other_b, phone="254712777777"),
         admin=make_user(session, role=UserRole.ADMIN),
         seller_b=seller_b,
         buyer_b=buyer_b,
