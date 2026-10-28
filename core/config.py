@@ -6,8 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/huza"
-    secret_key: str = "dev-only-secret-key-change-me-before-deploying"
+    database_url: str
+    jwt_secret: str
     jwt_algorithm: str = "HS256"
 
 
