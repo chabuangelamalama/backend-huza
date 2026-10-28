@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -10,6 +11,7 @@ from core.security import CurrentUser
 from models import PriceGuide
 from models.business import ApprovalStatus
 from models.listing import Stream, Unit
+from models.price_guide import GRADES_BY_STREAM
 from repositories.price_guide import price_guide_repository
 from schemas.price_guide import (
     Position,
@@ -17,8 +19,6 @@ from schemas.price_guide import (
     PriceGuideCreate,
     PriceGuideRead,
     PriceGuideUpdate,
-    check_grade,
-    check_range,
 )
 
 NULLABLE_FIELDS = {"grade", "sample_size", "district"}
@@ -65,6 +65,41 @@ def _find_guide(db: Session, guide_id: uuid.UUID) -> PriceGuide:
             detail="Price guide not found.",
         )
     return guide
+
+
+def _lower(grade: str | None) -> str | None:
+    return grade.lower() if grade else grade
+
+
+def _check_date(source_date: date | None) -> None:
+    if source_date is not None and source_date > date.today():
+        raise HTTPException(
+            status_code=422,
+            detail="Source date cannot be in the future",
+        )
+
+
+def _check_range(min_price: Decimal, max_price: Decimal) -> None:
+    if max_price < min_price:
+        raise HTTPException(
+            status_code=422,
+            detail="Max price cannot be below min price",
+        )
+
+
+def _check_grade(stream: Stream, grade: str | None) -> None:
+    if grade is None:
+        return
+    allowed = GRADES_BY_STREAM[stream]
+    if grade not in allowed:
+        options = ", ".join(sorted(allowed))
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Grade '{grade}' is not valid for {stream.value}. "
+                f"Allowed grades: {options}"
+            ),
+        )
 
 
 def _reject_duplicate(
@@ -127,7 +162,13 @@ class PriceGuideService:
         _authorise(db, current_user, "create price guides", admin_only=True)
 
         guide_data = data.model_dump()
+        guide_data["grade"] = _lower(guide_data["grade"])
+
+        _check_date(guide_data["source_date"])
+        _check_range(guide_data["min_price"], guide_data["max_price"])
+        _check_grade(guide_data["stream"], guide_data["grade"])
         _reject_duplicate(db, {name: guide_data[name] for name in DUPLICATE_FIELDS})
+
         guide_data["created_by"] = current_user.user_id
 
         try:
@@ -161,20 +202,22 @@ class PriceGuideService:
                 detail="Nothing to update. Send at least one field.",
             )
 
+        if "grade" in changes:
+            changes["grade"] = _lower(changes["grade"])
+
         merged = {
             name: changes[name] if name in changes else getattr(guide, name)
             for name in DUPLICATE_FIELDS
         }
 
-        try:
-            check_range(
-                changes.get("min_price", guide.min_price),
-                changes.get("max_price", guide.max_price),
-            )
-            if "stream" in changes or "grade" in changes:
-                check_grade(merged["stream"], merged["grade"])
-        except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from None
+        if "source_date" in changes:
+            _check_date(changes["source_date"])
+        _check_range(
+            changes.get("min_price", guide.min_price),
+            changes.get("max_price", guide.max_price),
+        )
+        if "stream" in changes or "grade" in changes:
+            _check_grade(merged["stream"], merged["grade"])
 
         if DUPLICATE_FIELDS & changes.keys():
             _reject_duplicate(db, merged, exclude_id=guide.guide_id)
@@ -211,7 +254,7 @@ class PriceGuideService:
             material=material,
             unit=unit,
             district=district,
-            grade=grade.lower() if grade else None,
+            grade=_lower(grade),
         )
 
         if guide is None:

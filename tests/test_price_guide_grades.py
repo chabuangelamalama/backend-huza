@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from pydantic import ValidationError
 
 import services.price_guide as service_module
 from models.listing import Stream, Unit
@@ -30,7 +29,7 @@ def make_payload(stream, grade):
 
 
 class FakeRepository:
-    def __init__(self, guide, duplicate=None):
+    def __init__(self, guide=None, duplicate=None):
         self.guide = guide
         self.duplicate = duplicate
 
@@ -39,6 +38,9 @@ class FakeRepository:
 
     def find_duplicate(self, db, **kwargs):
         return self.duplicate
+
+    def create(self, db, data):
+        return data
 
     def update(self, db, guide, changes):
         return changes
@@ -60,6 +62,10 @@ def use_guide(monkeypatch, stream, grade, duplicate=None):
         service_module, "price_guide_repository", FakeRepository(guide, duplicate)
     )
     return guide
+
+
+def use_empty_repository(monkeypatch):
+    monkeypatch.setattr(service_module, "price_guide_repository", FakeRepository())
 
 
 @pytest.fixture
@@ -92,19 +98,25 @@ def test_every_stream_has_grades():
         (Stream.GLASS, "green"),
     ],
 )
-def test_create_accepts_valid_grade(stream, grade):
+def test_create_accepts_valid_grade(monkeypatch, admin, stream, grade):
+    use_empty_repository(monkeypatch)
     data = PriceGuideCreate(**make_payload(stream, grade))
-    assert data.grade == grade
+    saved = price_guide_service.create_price_guide(None, data, admin)
+    assert saved["grade"] == grade
 
 
-def test_create_accepts_missing_grade():
+def test_create_accepts_missing_grade(monkeypatch, admin):
+    use_empty_repository(monkeypatch)
     data = PriceGuideCreate(**make_payload(Stream.GLASS, None))
-    assert data.grade is None
+    saved = price_guide_service.create_price_guide(None, data, admin)
+    assert saved["grade"] is None
 
 
-def test_create_lowercases_grade():
+def test_create_lowercases_grade(monkeypatch, admin):
+    use_empty_repository(monkeypatch)
     data = PriceGuideCreate(**make_payload(Stream.GLASS, "Clear"))
-    assert data.grade == "clear"
+    saved = price_guide_service.create_price_guide(None, data, admin)
+    assert saved["grade"] == "clear"
 
 
 @pytest.mark.parametrize(
@@ -116,10 +128,13 @@ def test_create_lowercases_grade():
         (Stream.GLASS, "A"),
     ],
 )
-def test_create_rejects_grade_from_another_stream(stream, grade):
-    with pytest.raises(ValidationError) as error:
-        PriceGuideCreate(**make_payload(stream, grade))
-    assert "Allowed grades" in str(error.value)
+def test_create_rejects_grade_from_another_stream(monkeypatch, admin, stream, grade):
+    use_empty_repository(monkeypatch)
+    data = PriceGuideCreate(**make_payload(stream, grade))
+    with pytest.raises(HTTPException) as error:
+        price_guide_service.create_price_guide(None, data, admin)
+    assert error.value.status_code == 422
+    assert "Allowed grades" in error.value.detail
 
 
 def test_update_allows_grade_alone_in_schema():
@@ -159,6 +174,14 @@ def test_service_allows_clearing_grade(monkeypatch, admin):
         None, guide.guide_id, PriceGuideUpdate(grade=None), admin
     )
     assert changes == {"grade": None}
+
+
+def test_service_lowercases_grade_on_update(monkeypatch, admin):
+    guide = use_guide(monkeypatch, Stream.GLASS, "clear")
+    changes = price_guide_service.update_price_guide(
+        None, guide.guide_id, PriceGuideUpdate(grade="AMBER"), admin
+    )
+    assert changes == {"grade": "amber"}
 
 
 def test_service_rejects_empty_update(monkeypatch, admin):

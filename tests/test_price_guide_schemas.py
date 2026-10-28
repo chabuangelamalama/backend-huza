@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -30,11 +30,6 @@ def test_valid_guide_is_accepted():
     assert guide.grade is None
 
 
-def test_max_price_below_min_price_is_rejected():
-    with pytest.raises(ValidationError):
-        PriceGuideCreate(**payload(min_price="60", max_price="30"))
-
-
 def test_same_min_and_max_price_is_accepted():
     guide = PriceGuideCreate(**payload(min_price="50", max_price="50"))
     assert guide.min_price == guide.max_price
@@ -49,12 +44,6 @@ def test_min_price_must_be_above_zero(price):
 def test_prices_allow_at_most_four_decimal_places():
     with pytest.raises(ValidationError):
         PriceGuideCreate(**payload(min_price="1.23456", max_price="5"))
-
-
-def test_source_date_in_the_future_is_rejected():
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
-    with pytest.raises(ValidationError):
-        PriceGuideCreate(**payload(source_date=tomorrow))
 
 
 def test_blank_material_is_rejected():
@@ -98,12 +87,6 @@ def test_update_accepts_a_single_field():
 def test_update_rejects_unknown_fields():
     with pytest.raises(ValidationError):
         PriceGuideUpdate(guide_id="x")
-
-
-def test_update_rejects_a_future_source_date():
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
-    with pytest.raises(ValidationError):
-        PriceGuideUpdate(source_date=tomorrow)
 
 
 def test_update_rejects_a_blank_material():
