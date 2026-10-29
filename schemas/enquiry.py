@@ -3,6 +3,15 @@ from decimal import Decimal
 import uuid
 
 
+class EnquiryCreate(BaseModel):
+    listing_id: uuid.UUID
+    buyer_business_id: uuid.UUID
+    seller_business_id: uuid.UUID
+    quantity: Decimal
+    unit: str
+    unit_price: Decimal
+
+
 class EnquiryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

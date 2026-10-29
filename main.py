@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from routers.messaging import router as messaging_router
+from routers.enquiries import router as enquiries_router
 
 app = FastAPI(title="Huza", version="0.1.0")
 
@@ -11,4 +11,4 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-app.include_router(messaging_router)
+app.include_router(enquiries_router)
