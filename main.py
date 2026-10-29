@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from core.config import get_settings
 from core.exceptions import AppError
 from database import check_database, engine
-from routers import admin, auth, price_guide
+from routers import admin, auth, notification, price_guide
 
 settings = get_settings()
 
@@ -46,6 +46,7 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(price_guide.router)
+app.include_router(notification.router)
 
 
 @app.get("/health")
