@@ -66,6 +66,8 @@ CREATE_BODY = {
     "unit_price": 40,
 }
 
+FORM_BODY = {**CREATE_BODY, "specifications": json.dumps({"moisture": "8%"})}
+
 
 def make_image(photo_format="PNG", mode="RGB", size=(10, 10), exif=None):
     output = BytesIO()
@@ -134,9 +136,9 @@ def make_create(**changes):
 
 
 def create(data=None, photos=None):
-    return listing_service.create_listing(
-        DB, (data or make_create()).model_dump_json(), photos or [], make_user()
-    )
+    values = (data or make_create()).model_dump(mode="json")
+    values["specifications"] = json.dumps(values["specifications"])
+    return listing_service.create_listing(DB, values, photos or [], make_user())
 
 
 @pytest.fixture
@@ -358,9 +360,9 @@ def test_create_rejects_unknown_location(repo):
 @pytest.mark.parametrize(
     "data",
     [
-        json.dumps({**CREATE_BODY, "business_id": str(uuid4())}),
-        json.dumps({**CREATE_BODY, "quantity": "lots"}),
-        "not json",
+        {**FORM_BODY, "business_id": str(uuid4())},
+        {**FORM_BODY, "quantity": "lots"},
+        {**FORM_BODY, "specifications": "not json"},
     ],
 )
 def test_create_refuses_bad_listing_data(repo, data):
@@ -719,7 +721,7 @@ def test_router_create_listing_with_photos(client, monkeypatch):
     received = {}
 
     def fake(db, data, photos, user):
-        received["name"] = json.loads(data)["material_or_product"]
+        received["name"] = data["material_or_product"]
         received["photos"] = photos
         return SAMPLE
 
@@ -727,7 +729,7 @@ def test_router_create_listing_with_photos(client, monkeypatch):
     first, second = make_image("PNG"), make_image("JPEG")
     response = client.post(
         "/listing/",
-        data={"data": json.dumps(CREATE_BODY)},
+        data=FORM_BODY,
         files=[
             ("photos", ("one.png", first, "image/png")),
             ("photos", ("two.jpg", second, "image/jpeg")),
@@ -744,6 +746,11 @@ def test_router_create_listing_without_photos(client, monkeypatch):
     def fake(db, data, photos, user):
         received["photos"] = photos
         return SAMPLE
+
+    monkeypatch.setattr(listing_service, "create_listing", fake)
+    response = client.post("/listing/", data=FORM_BODY)
+    assert response.status_code == 201
+    assert received == {"photos": []}
 
 
 def test_router_needs_listing_data(client):

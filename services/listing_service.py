@@ -1,3 +1,4 @@
+import json
 import base64
 from datetime import datetime, timezone
 from io import BytesIO
@@ -168,14 +169,27 @@ def _check_status_change(listing, new_status: ListingStatus, quantity):
         raise _error(400, "Add a quantity above 0 before publishing.")
 
 
-def read_listing_data(data: str) -> ListingCreate:
+def read_listing_data(data: dict) -> ListingCreate:
     try:
-        return ListingCreate.model_validate_json(data)
+        specifications = json.loads(data.get("specifications") or "{}")
+    except json.JSONDecodeError as error:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "json_invalid",
+                    "loc": ("body", "specifications"),
+                    "msg": "specifications must be valid JSON.",
+                    "input": data.get("specifications"),
+                }
+            ]
+        ) from error
+    try:
+        return ListingCreate.model_validate({**data, "specifications": specifications})
     except ValidationError as error:
         raise RequestValidationError(error.errors(include_url=False)) from error
 
 
-def create_listing(db, data: str, photo_files: list[bytes], current_user):
+def create_listing(db, data: dict, photo_files: list[bytes], current_user):
     business = _get_approved_business(db, current_user)
     listing_type = listing_type_for_role(business.business_role)
     if listing_type is None:
