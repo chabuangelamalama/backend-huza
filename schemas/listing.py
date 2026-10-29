@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from models.listing import ListingStatus, ListingType, SortingStatus, Stream, Unit
 
@@ -12,6 +12,10 @@ class ListingPhotoRead(BaseModel):
     width: int
     height: int
     size_bytes: int
+
+
+class ListingPhotoLink(ListingPhotoRead):
+    url: str = ""
 
 
 class ListingBase(BaseModel):
@@ -53,8 +57,14 @@ class ListingRead(ListingBase):
     listing_type: ListingType
     quantity: float
     unit_price: float
-    photos: list[ListingPhotoRead] = []
+    photos: list[ListingPhotoLink] = []
     status: ListingStatus = ListingStatus.DRAFT
     published_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def add_photo_urls(self):
+        for photo in self.photos:
+            photo.url = f"/listing/{self.listing_id}/photos/{photo.position}"
+        return self

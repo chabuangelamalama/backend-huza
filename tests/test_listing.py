@@ -793,8 +793,15 @@ def test_router_get_listing_hides_photo_data(client, monkeypatch):
     )
     response = client.get(f"/listing/{LISTING_ID}")
     assert response.status_code == 200
-    assert response.json()["photos"] == [
-        {"position": 1, "width": 10, "height": 10, "size_bytes": 3}
+    body = response.json()
+    assert body["photos"] == [
+        {
+            "position": 1,
+            "width": 10,
+            "height": 10,
+            "size_bytes": 3,
+            "url": f"/listing/{body['listing_id']}/photos/1",
+        }
     ]
 
 
