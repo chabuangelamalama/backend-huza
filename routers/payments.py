@@ -24,7 +24,7 @@ router = APIRouter(tags=["payments"])
 NO_STORE = {"Cache-Control": "no-store"}
 
 
-# --------------------------------------------------------- request schemas
+
 
 
 class PaymentStartRequest(BaseModel):

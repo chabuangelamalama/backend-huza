@@ -4,6 +4,9 @@ from typing import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @lru_cache
