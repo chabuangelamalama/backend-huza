@@ -23,7 +23,6 @@ app = FastAPI(title="HUZA API", version="0.1.0", lifespan=lifespan)
 if settings.is_production:
     cors_options = {"allow_origins": settings.cors_origin_list}
 else:
-  
     cors_options = {"allow_origin_regex": r"https?://(localhost|127\.0\.0\.1)(:\d+)?"}
 
 app.add_middleware(

@@ -75,6 +75,7 @@ def _encode(
 
 class TokenResult(str):
     """String subclass that also allows tuple unpacking (token, exp_seconds)."""
+
     def __new__(cls, token: str, exp_seconds: int):
         obj = super().__new__(cls, token)
         obj.token = token
@@ -181,10 +182,12 @@ def get_current_user(
             algorithms=[settings.jwt_algorithm],
         )
         role_val = payload.get("role")
-        user_role = UserRole(role_val) if role_val in [r.value for r in UserRole] else UserRole[role_val]
-        return CurrentUser(
-            user_id=uuid.UUID(payload["sub"]), role=user_role
+        user_role = (
+            UserRole(role_val)
+            if role_val in [r.value for r in UserRole]
+            else UserRole[role_val]
         )
+        return CurrentUser(user_id=uuid.UUID(payload["sub"]), role=user_role)
     except (jwt.PyJWTError, KeyError, ValueError):
         raise unauthorized("Your login is not valid") from None
 

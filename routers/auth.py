@@ -18,14 +18,20 @@ RESET_REQUESTED = "If that email has an account, a reset link is on its way."
 
 
 def _format_user(user: User) -> dict:
-    role_str = user.user_role.value if hasattr(user.user_role, "value") else str(user.user_role)
+    role_str = (
+        user.user_role.value
+        if hasattr(user.user_role, "value")
+        else str(user.user_role)
+    )
     biz = getattr(user, "business", None)
     biz_dict = None
     if biz is not None:
         status_val = getattr(biz, "approval_status", None)
         biz_dict = {
             "business_id": str(getattr(biz, "business_id", "")),
-            "approval_status": status_val.value if hasattr(status_val, "value") else str(status_val or "PENDING"),
+            "approval_status": status_val.value
+            if hasattr(status_val, "value")
+            else str(status_val or "PENDING"),
         }
     return {
         "user_id": str(user.user_id),
