@@ -83,8 +83,9 @@ class LoggingEmailSender:
 
     def send(self, message: OutgoingEmail) -> None:
         if self.reveal_links:
+            logged_item = message.link if message.link else message.text
             logger.warning(
-                "EMAIL to %s: %s\n%s", message.to, message.subject, message.text
+                "EMAIL to %s: %s\n%s", message.to, message.subject, logged_item
             )
         else:
             logger.warning("No SMTP_HOST is set, so %r was not sent.", message.subject)
@@ -112,23 +113,44 @@ def _duration(minutes: int) -> str:
 
 def build_verification_email(user: User, settings: Settings) -> OutgoingEmail:
     token = create_verify_token(user.user_id, user.email, settings)
+    link = f"{settings.email_verify_url}?token={token}"
+    duration_str = _duration(settings.verify_token_minutes)
+    safe_name = html.escape(user.first_name)
     text = (
         f"Hello {user.first_name},\n\n"
         f"Please confirm your email address to finish setting up your account:\n"
-        f"{settings.email_verify_url}?token={token}\n\n"
+        f"{link}\n\n"
+        f"This link expires in {duration_str}. If you did not create an account, you can ignore this email.\n\n"
         f"- The HUZA team\n"
     )
-    return OutgoingEmail(to=user.email, subject="Confirm your HUZA email address", text=text)
+    html_body = (
+        f'<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;">'
+        f"<p>Hello {safe_name},</p>"
+        f"<p>Please confirm your email address to finish setting up your account.</p>"
+        f'<p><a href="{html.escape(link)}" style="display:inline-block;padding:12px 24px;background:#113225;color:#ffffff;text-decoration:none;border-radius:24px;font-weight:bold;">Confirm email</a></p>'
+        f'<p style="color:#666;font-size:13px">This link expires in {duration_str}.</p>'
+        f'<p style="color:#666;font-size:13px">The HUZA team</p></div>'
+    )
+    return OutgoingEmail(
+        to=user.email,
+        subject="Confirm your HUZA email address",
+        text=text,
+        html=html_body,
+        link=link,
+    )
 
 
-def build_password_reset_email(user: User, code: str, settings: Settings) -> OutgoingEmail:
+def build_password_reset_email(
+    user: User, code: str, settings: Settings
+) -> OutgoingEmail:
     safe_name = html.escape(user.first_name)
     subject = "Your HUZA password reset code"
+    duration_str = _duration(settings.reset_token_minutes)
     text = (
         f"Hello {user.first_name},\n\n"
         f"We received a request to reset your HUZA password.\n\n"
         f"Your verification code is: {code}\n\n"
-        f"This code expires in 15 minutes. If you did not ask for this, you can ignore this email.\n\n"
+        f"This code expires in {duration_str}. If you did not ask for this, you can ignore this email.\n\n"
         f"- The HUZA team\n"
     )
     html_body = f"""\
@@ -146,7 +168,7 @@ def build_password_reset_email(user: User, code: str, settings: Settings) -> Out
       </span>
     </div>
 
-    <p style="color: #6b7280; font-size: 13px; line-height: 1.4;">This code expires in 15 minutes and works once. If you did not request this, you can safely ignore this email.</p>
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.4;">This code expires in {duration_str} and works once. If you did not request this, you can safely ignore this email.</p>
     <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;">
     <p style="color: #9ca3af; font-size: 12px; margin-bottom: 0;">The HUZA team</p>
   </div>

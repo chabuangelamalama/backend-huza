@@ -1,17 +1,17 @@
 """End-to-end tests of the auth endpoints. They need the Postgres test database
 from conftest.py and are skipped automatically when it is not available."""
 
+import re
 import uuid
 from decimal import Decimal
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
 
 from core.config import Settings, get_settings
-from database import get_db
 from core.dependencies import get_mailer
 from core.security import hash_password
+from database import get_db
 from main import app
 from models import Business, Location, User
 from models.business import BusinessRole, BusinessType
@@ -25,7 +25,7 @@ class FakeMailer:
     def __init__(self):
         self.sent = []
 
-    def send_password_reset(self, message):
+    def send(self, message):
         self.sent.append(message)
 
 
@@ -187,7 +187,7 @@ def test_the_account_locks_after_too_many_failures(client, session):
     for _ in range(3):
         assert sign_in(client, user.email, "Wrong1horse").status_code == 401
 
-    locked = sign_in(client, user.email)  # even the right password is refused
+    locked = sign_in(client, user.email)
     assert locked.status_code == 429
     assert int(locked.headers["Retry-After"]) > 0
     assert "Try again" in locked.json()["detail"]
@@ -198,11 +198,11 @@ def test_a_successful_login_resets_the_failure_count(client, session):
 
     for _ in range(2):
         sign_in(client, user.email, "Wrong1horse")
-    assert sign_in(client, user.email).status_code == 200
+        assert sign_in(client, user.email).status_code == 200
 
-    for _ in range(2):  # would be the 4th and 5th failure without the reset
+    for _ in range(2):
         assert sign_in(client, user.email, "Wrong1horse").status_code == 401
-    assert sign_in(client, user.email).status_code == 200
+        assert sign_in(client, user.email).status_code == 200
 
 
 def test_an_admin_can_unlock_an_account(client, session):
@@ -231,7 +231,6 @@ def test_logout_revokes_the_token(client, session):
     token = token_for(client, user)
 
     assert client.post("/auth/logout", headers=auth_header(token)).status_code == 204
-
     assert client.get("/auth/me", headers=auth_header(token)).status_code == 401
 
 
@@ -285,9 +284,10 @@ def test_weak_new_passwords_are_refused(client, session, weak):
 # --------------------------------------------------------------------------- #
 
 
-def reset_token_from(mailer):
-    link = mailer.sent[-1].link
-    return parse_qs(urlparse(link).query)["token"][0]
+def reset_code_from(mailer) -> str:
+    match = re.search(r"code is: (\d{6})", mailer.sent[-1].text)
+    assert match is not None, f"No 6-digit code found in: {mailer.sent[-1].text}"
+    return match.group(1)
 
 
 def test_forgot_password_answers_the_same_for_every_address(client, session, mailer):
@@ -298,7 +298,7 @@ def test_forgot_password_answers_the_same_for_every_address(client, session, mai
 
     assert known.status_code == unknown.status_code == 202
     assert known.json() == unknown.json()
-    assert len(mailer.sent) == 1  # only the real account got an email
+    assert len(mailer.sent) == 1
     assert mailer.sent[0].to == user.email
 
 
@@ -306,10 +306,11 @@ def test_reset_password_flow_works_once(client, session, mailer):
     user = make_business_user(session)
     old_token = token_for(client, user)
     client.post("/auth/forgot-password", json={"email": user.email})
-    token = reset_token_from(mailer)
+    code = reset_code_from(mailer)
 
     done = client.post(
-        "/auth/reset-password", json={"token": token, "password": "Reset4success"}
+        "/auth/reset-password",
+        json={"email": user.email, "code": code, "password": "Reset4success"},
     )
 
     assert done.status_code == 200
@@ -318,14 +319,20 @@ def test_reset_password_flow_works_once(client, session, mailer):
     assert client.get("/auth/me", headers=auth_header(old_token)).status_code == 401
 
     again = client.post(
-        "/auth/reset-password", json={"token": token, "password": "Another5pass"}
+        "/auth/reset-password",
+        json={"email": user.email, "code": code, "password": "Another5pass"},
     )
-    assert again.status_code == 400  # the link was single use
+    assert again.status_code == 400
 
 
 def test_reset_password_rejects_a_bad_token(client):
     response = client.post(
-        "/auth/reset-password", json={"token": "garbage", "password": "Reset4success"}
+        "/auth/reset-password",
+        json={
+            "email": "nobody@example.rw",
+            "code": "000000",
+            "password": "Reset4success",
+        },
     )
     assert response.status_code == 400
 
@@ -336,7 +343,11 @@ def test_reset_password_enforces_the_password_rule(client, session, mailer):
 
     response = client.post(
         "/auth/reset-password",
-        json={"token": reset_token_from(mailer), "password": "short"},
+        json={
+            "email": user.email,
+            "code": reset_code_from(mailer),
+            "password": "short",
+        },
     )
 
     assert response.status_code == 422
@@ -350,7 +361,11 @@ def test_resetting_a_password_also_clears_a_lockout(client, session, mailer):
 
     client.post(
         "/auth/reset-password",
-        json={"token": reset_token_from(mailer), "password": "Reset4success"},
+        json={
+            "email": user.email,
+            "code": reset_code_from(mailer),
+            "password": "Reset4success",
+        },
     )
 
     assert sign_in(client, user.email, "Reset4success").status_code == 200

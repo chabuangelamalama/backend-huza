@@ -1,4 +1,3 @@
-import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -34,11 +33,11 @@ def hash_password(password: str) -> str:
 
 def verify_and_update(password: str, password_hash: str) -> tuple[bool, str | None]:
     try:
-        needs_rehash = _hasher.check_needs_rehash(password_hash)
         _hasher.verify(password_hash, password)
+        needs_rehash = _hasher.check_needs_rehash(password_hash)
         new_hash = _hasher.hash(password) if needs_rehash else None
         return True, new_hash
-    except VerifyMismatchError:
+    except Exception:
         return False, None
 
 
@@ -50,7 +49,9 @@ def burn_password_check() -> None:
         pass
 
 
-def _encode(payload: dict, token_type: str, minutes: int, settings: Settings) -> tuple[str, int]:
+def _encode(
+    payload: dict, token_type: str, minutes: int, settings: Settings
+) -> tuple[str, int]:
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(minutes=minutes)
     data = {
@@ -86,9 +87,7 @@ def create_reset_token(
     return token
 
 
-def create_verify_token(
-    user_id: uuid.UUID, email: str, settings: Settings
-) -> str:
+def create_verify_token(user_id: uuid.UUID, email: str, settings: Settings) -> str:
     token, _ = _encode(
         {"sub": str(user_id), "email": email.lower().strip()},
         VERIFY,

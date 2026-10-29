@@ -1,4 +1,5 @@
 """FastAPI dependencies: current user, role checks, and service wiring."""
+
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -76,10 +77,12 @@ def get_current_user(
 
 def require_roles(*roles: UserRole):
     """Dependency factory: allow only users holding one of the given roles."""
+
     def checker(user: User = Depends(get_current_user)) -> User:
         if user.user_role not in roles:
             raise PermissionDenied()
         return user
+
     return checker
 
 

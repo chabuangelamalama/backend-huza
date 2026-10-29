@@ -133,9 +133,9 @@ def test_send_or_raise_lets_the_error_through(smtp):
 def test_a_send_failure_is_logged_and_does_not_crash(smtp, caplog):
     smtp.fail_on_send = True
     with caplog.at_level(logging.ERROR, logger="huza.email"):
-        sender().send(EMAIL)  # must not raise: it runs after the response is sent
+        sender().send(EMAIL)
     assert "Could not send email" in caplog.text
-    assert "aline@example.rw" not in caplog.text  # no personal data in the logs
+    assert "aline@example.rw" not in caplog.text
 
 
 # --------------------------------------------------------------------------- #
@@ -186,9 +186,9 @@ def test_the_verification_email_carries_a_link_to_the_app():
 def test_the_reset_email_says_how_long_the_link_lasts():
     settings = Settings(**SETTINGS, reset_token_minutes=45)
 
-    email = build_password_reset_email(make_user(), settings)
+    email = build_password_reset_email(make_user(), "482910", settings)
 
-    assert email.link.startswith("huza://reset-password?token=")
+    assert "482910" in email.text
     assert "45 minutes" in email.text
 
 

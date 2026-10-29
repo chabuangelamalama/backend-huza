@@ -99,5 +99,5 @@ def reset_password(
     service: AuthService = Depends(get_auth_service),
 ):
     """Choose a new password using the token from the emailed link (single use)."""
-    service.reset_password(body.token, body.password)
+    service.reset_password(body.email, body.code, body.password)
     return MessageResponse(detail="Password changed. Sign in with your new password.")

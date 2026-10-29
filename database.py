@@ -11,7 +11,6 @@ from core.config import get_settings
 def _engine_options(url: str) -> dict:
     options: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
-      
         options["connect_args"] = {"check_same_thread": False}
     else:
         options.update(pool_size=5, max_overflow=10, pool_recycle=1800)

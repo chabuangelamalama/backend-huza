@@ -10,7 +10,6 @@ from core.exceptions import (
     WrongPassword,
 )
 from core.security import (
-    TokenError,
     burn_password_check,
     create_access_token,
     hash_password,
