@@ -12,7 +12,7 @@ def _session_factory() -> sessionmaker:
     url = os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
-    
+
     return sessionmaker(bind=create_engine(url, pool_pre_ping=True))
 
 
