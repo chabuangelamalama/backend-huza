@@ -6,6 +6,12 @@ from sqlalchemy.orm import Session
 
 from models import Base
 
+# `main` reads its settings when a test module imports it, which happens after this
+# file loads. Give tests safe defaults so they never need a real .env. CI already
+# sets both, and real environment values win.
+os.environ.setdefault("DATABASE_URL", "sqlite://")
+os.environ.setdefault("JWT_SECRET", "test-only-signing-key-do-not-use-in-production")
+
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+psycopg2://postgres:postgres@localhost:5432/huza_test",
