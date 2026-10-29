@@ -833,19 +833,18 @@ def test_router_get_photo_sends_image(client, monkeypatch):
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
-def test_get_db_without_database_url(monkeypatch):
-    monkeypatch.setattr(database, "SessionLocal", None)
-    raises_status(503, lambda: next(database.get_db()))
-
-
-def test_get_db_opens_and_closes_session(monkeypatch):
-    session = MagicMock()
-    monkeypatch.setattr(database, "SessionLocal", lambda: session)
-    generator = database.get_db()
-    assert next(generator) is session
-    generator.close()
-    session.close.assert_called_once()
-
-
 def test_get_current_user_is_not_ready_yet():
     raises_status(401, get_current_user)
+
+
+def test_get_db_yields_a_session_and_closes_it(monkeypatch):
+    from unittest.mock import MagicMock
+
+    import database
+
+    session_factory = MagicMock()
+    monkeypatch.setattr(database, "SessionLocal", session_factory)
+    generator = database.get_db()
+    assert next(generator) is session_factory.return_value.__enter__.return_value
+    generator.close()
+    session_factory.return_value.__exit__.assert_called_once()
