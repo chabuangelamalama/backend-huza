@@ -196,6 +196,8 @@ def create_listing(db, data: dict, photo_files: list[bytes], current_user):
         raise _error(403, "Buyers cannot create listings.")
     values = read_listing_data(data).model_dump()
     _check_values(db, business, values, creating=True)
+    if not photo_files:
+        raise _error(400, "Add at least one photo.")
     values["photos"] = prepare_photos(photo_files)
     values["business_id"] = business.business_id
     values["listing_type"] = listing_type

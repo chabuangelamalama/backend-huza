@@ -136,9 +136,11 @@ def make_create(**changes):
 
 
 def create(data=None, photos=None):
+    if photos is None:
+        photos = [make_image()]
     values = (data or make_create()).model_dump(mode="json")
     values["specifications"] = json.dumps(values["specifications"])
-    return listing_service.create_listing(DB, values, photos or [], make_user())
+    return listing_service.create_listing(DB, values, photos, make_user())
 
 
 @pytest.fixture
@@ -312,7 +314,7 @@ def test_supplier_creates_listing_for_own_business(repo):
     assert values["material_or_product"] == "Pine sawdust"
     assert values["listing_type"] == ListingType.RAW_BYPRODUCT
     assert values["business_id"] == BUSINESS_ID
-    assert values["photos"] == []
+    assert len(values["photos"]) == 1
     assert "status" not in values
 
 
@@ -332,6 +334,12 @@ def test_bad_photo_saves_nothing(repo):
 def test_sixth_photo_saves_nothing(repo):
     repo.get_business.return_value = make_business()
     raises_status(400, lambda: create(photos=[make_image()] * 6))
+    repo.create.assert_not_called()
+
+
+def test_create_without_photos_saves_nothing(repo):
+    repo.get_business.return_value = make_business()
+    raises_status(400, lambda: create(photos=[]))
     repo.create.assert_not_called()
 
 
@@ -368,7 +376,7 @@ def test_create_rejects_unknown_location(repo):
 def test_create_refuses_bad_listing_data(repo, data):
     repo.get_business.return_value = make_business()
     with pytest.raises(RequestValidationError):
-        listing_service.create_listing(DB, data, [], make_user())
+        listing_service.create_listing(DB, data, [make_image()], make_user())
     repo.create.assert_not_called()
 
 
