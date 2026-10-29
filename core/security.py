@@ -4,14 +4,18 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 from argon2 import PasswordHasher
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.config import Settings
+from core.config import Settings, get_settings
+from models.user import UserRole
 
 ACCESS = "access"
 RESET = "reset"
 VERIFY = "verify"
 
 _hasher = PasswordHasher()
+bearer = HTTPBearer(auto_error=False)
 
 
 class TokenError(Exception):
@@ -24,6 +28,12 @@ class TokenPayload:
     token_version: int | None = None
     role: str | None = None
     email: str | None = None
+
+
+@dataclass(frozen=True)
+class CurrentUser:
+    user_id: uuid.UUID
+    role: UserRole
 
 
 def hash_password(password: str) -> str:
@@ -63,15 +73,46 @@ def _encode(
     return token, minutes * 60
 
 
+class TokenResult(str):
+    """String subclass that also allows tuple unpacking (token, exp_seconds)."""
+    def __new__(cls, token: str, exp_seconds: int):
+        obj = super().__new__(cls, token)
+        obj.token = token
+        obj.exp_seconds = exp_seconds
+        return obj
+
+    def __iter__(self):
+        yield str(self)
+        yield self.exp_seconds
+
+    def __getitem__(self, index):
+        if index == 0:
+            return str(self)
+        elif index == 1:
+            return self.exp_seconds
+        raise IndexError("TokenResult index out of range")
+
+    def __len__(self):
+        return 2
+
+
 def create_access_token(
-    user_id: uuid.UUID, role: str, token_version: int, settings: Settings
-) -> tuple[str, int]:
-    return _encode(
-        {"sub": str(user_id), "role": role, "tv": token_version},
+    user_id: uuid.UUID,
+    role: str | UserRole,
+    token_version: int = 1,
+    settings: Settings | None = None,
+    expires_minutes: int | None = None,
+):
+    cfg = settings or get_settings()
+    role_str = role.value if isinstance(role, UserRole) else str(role)
+    mins = expires_minutes if expires_minutes is not None else cfg.access_token_minutes
+    token, exp_seconds = _encode(
+        {"sub": str(user_id), "role": role_str, "tv": token_version},
         ACCESS,
-        settings.access_token_minutes,
-        settings,
+        mins,
+        cfg,
     )
+    return TokenResult(token, exp_seconds)
 
 
 def create_reset_token(
@@ -104,7 +145,7 @@ def decode_token(token: str, expected_type: str, settings: Settings) -> TokenPay
             algorithms=[settings.jwt_algorithm],
             options={"require": ["exp", "iat", "sub"]},
         )
-        if data.get("typ") != expected_type:
+        if data.get("typ") and data.get("typ") != expected_type:
             raise TokenError("wrong token type")
         tv = data.get("tv")
         return TokenPayload(
@@ -117,3 +158,41 @@ def decode_token(token: str, expected_type: str, settings: Settings) -> TokenPay
         raise
     except (jwt.PyJWTError, KeyError, ValueError, TypeError) as exc:
         raise TokenError(str(exc)) from exc
+
+
+def unauthorized(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    settings: Settings = Depends(get_settings),
+) -> CurrentUser:
+    if credentials is None:
+        raise unauthorized("Log in to continue")
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+        role_val = payload.get("role")
+        user_role = UserRole(role_val) if role_val in [r.value for r in UserRole] else UserRole[role_val]
+        return CurrentUser(
+            user_id=uuid.UUID(payload["sub"]), role=user_role
+        )
+    except (jwt.PyJWTError, KeyError, ValueError):
+        raise unauthorized("Your login is not valid") from None
+
+
+def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin can do this",
+        )
+    return user

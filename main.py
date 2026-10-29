@@ -5,9 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from core.config import get_settings
-from database import check_database, engine
 from core.exceptions import AppError
-from routers import admin, auth
+from database import check_database, engine
+from routers import admin, auth, price_guide
 
 settings = get_settings()
 
@@ -20,11 +20,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="HUZA API", version="0.1.0", lifespan=lifespan)
 
-# The app sends a bearer token, not cookies, so credentials stay off.
 if settings.is_production:
     cors_options = {"allow_origins": settings.cors_origin_list}
 else:
-    # Flutter web picks a random localhost port on every run.
+  
     cors_options = {"allow_origin_regex": r"https?://(localhost|127\.0\.0\.1)(:\d+)?"}
 
 app.add_middleware(
@@ -47,6 +46,7 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
 
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(price_guide.router)
 
 
 @app.get("/health")
