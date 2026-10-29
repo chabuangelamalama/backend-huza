@@ -1,9 +1,12 @@
 from fastapi import FastAPI
+
+from routers import price_guide
 from routers.listing import router as listing_router
 
 app = FastAPI(title="HUZA API", version="0.1.0")
 
 app.include_router(listing_router)
+app.include_router(price_guide.router)
 
 
 @app.get("/health")
