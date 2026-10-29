@@ -1,0 +1,111 @@
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from sqlalchemy.orm import Session
+from core.dependencies import get_current_user
+from database import get_db
+from models.listing import ListingType, Stream, Unit
+from schemas.listing import ListingRead, ListingUpdate
+from services import listing_service
+
+router = APIRouter(prefix="/listing", tags=["listing"])
+
+
+@router.post("/", response_model=ListingRead, status_code=201)
+def create_listing(
+    stream: Stream = Form(...),
+    material_or_product: str = Form(...),
+    quantity: float = Form(...),
+    unit: Unit = Form(...),
+    unit_price: float = Form(...),
+    location_id: UUID = Form(...),
+    specifications: str = Form(
+        "{}", description='JSON object, e.g. {"moisture": "8%"}'
+    ),
+    photos: list[UploadFile] | None = File(
+        None, description="JPEG, PNG or WEBP, max 5 MB each, up to 5 photos"
+    ),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    files = [
+        photo.file.read(listing_service.MAX_PHOTO_BYTES + 1) for photo in photos or []
+    ]
+    data = {
+        "stream": stream,
+        "material_or_product": material_or_product,
+        "quantity": quantity,
+        "unit": unit,
+        "unit_price": unit_price,
+        "location_id": location_id,
+        "specifications": specifications,
+    }
+    return listing_service.create_listing(db, data, files, current_user)
+
+
+@router.get(
+    "/",
+    response_model=list[ListingRead],
+    dependencies=[Depends(get_current_user)],
+)
+def list_published(
+    stream: Stream | None = None,
+    listing_type: ListingType | None = None,
+    location_id: UUID | None = None,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+):
+    return listing_service.list_published(db, stream, listing_type, location_id, search)
+
+
+@router.get("/mine", response_model=list[ListingRead])
+def list_my_listings(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return listing_service.list_my_listings(db, current_user)
+
+
+@router.get("/{listing_id}", response_model=ListingRead)
+def get_listing(
+    listing_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return listing_service.get_listing(db, listing_id, current_user)
+
+
+@router.patch("/{listing_id}", response_model=ListingRead)
+def update_listing(
+    listing_id: UUID,
+    data: ListingUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return listing_service.update_listing(db, listing_id, data, current_user)
+
+
+@router.delete("/{listing_id}", response_model=ListingRead)
+def close_listing(
+    listing_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return listing_service.close_listing(db, listing_id, current_user)
+
+
+@router.get("/{listing_id}/photos/{position}")
+def get_photo(
+    listing_id: UUID,
+    position: int,
+    db: Session = Depends(get_db),
+):
+    data, content_type = listing_service.get_photo(db, listing_id, position)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
