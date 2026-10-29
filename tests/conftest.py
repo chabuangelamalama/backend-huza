@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 
 from models import Base
 
+os.environ.setdefault("DATABASE_URL", "sqlite://")
+os.environ.setdefault("JWT_SECRET", "test-only-signing-key-do-not-use-in-production")
+
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+psycopg2://postgres:postgres@localhost:5432/huza_test",
