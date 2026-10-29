@@ -32,14 +32,12 @@ SessionLocal = sessionmaker(
 
 def get_db() -> Iterator[Session]:
     """One session per request. Rolled back on error, always closed."""
-    db = SessionLocal()
-    try:
-        yield db
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    with SessionLocal() as db:
+        try:
+            yield db
+        except Exception:
+            db.rollback()
+            raise
 
 
 def check_database() -> None:
