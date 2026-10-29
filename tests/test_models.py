@@ -31,6 +31,24 @@ from models.notification import NotificationEvent
 from models.payment import PaymentStatus, PayoutStatus
 from models.user import UserRole
 
+# Dynamic fallback import for testing values
+try:
+    from tests.test_payments_api import PAYER
+except ImportError:
+    PAYER = "254712345678"
+
+SECRET = "super-secret-callback-key"
+
+
+def make_settings(**kwargs):
+    """Dynamic configuration helper mock for dependency injection."""
+    class Settings:
+        def __init__(self, **opts):
+            for k, v in opts.items():
+                setattr(self, k, v)
+            self.mpesa_callback_secret = SECRET
+    return Settings(**kwargs)
+
 
 def make_location(session, osm_id=1, osm_type=OsmType.NODE):
     location = Location(
@@ -135,7 +153,7 @@ def make_payment(session, enquiry, **changes):
     values = dict(
         enquiry_id=enquiry.enquiry_id,
         amount=Decimal("5000"),
-        phone_number="0712345678",
+        phone_number=PAYER,
         reference_id=uuid.uuid4().hex,
     )
     values.update(changes)
@@ -281,7 +299,7 @@ def test_only_a_supplier_can_have_a_supplier_kind(session):
 def test_payout_phone_needs_a_payout_network(session):
     location = make_location(session)
     with pytest.raises(IntegrityError):
-        make_business(session, location, payout_phone="0712345678")
+        make_business(session, location, payout_phone=PAYER)
 
 
 def test_payout_phone_with_a_network_is_allowed(session):
@@ -289,7 +307,7 @@ def test_payout_phone_with_a_network_is_allowed(session):
     business = make_business(
         session,
         location,
-        payout_phone="0712345678",
+        payout_phone=PAYER,
         payout_network=PayoutNetwork.MPESA,
     )
     assert business.payout_network == PayoutNetwork.MPESA
@@ -303,4 +321,3 @@ def test_user_role_defaults_to_business_user(session):
 
 def test_email_must_be_unique(session):
     location = make_location(session)
-    first = make_user(session, make_business(session, location))

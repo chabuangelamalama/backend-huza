@@ -30,10 +30,16 @@ def as_user(api, who):
 
 
 def start(api):
-    client, _, w = api
+    client, state, w = api
+    user = state["user"]
+    phone = (
+        getattr(user, "phone", None)
+        or getattr(user, "phone_number", None)
+        or PAYER
+    )
     return client.post(
         f"/enquiries/{w['enquiry'].enquiry_id}/payments",
-        json={"phone_number": "0712345678"},
+        json={"phone_number": phone},
     )
 
 
@@ -46,9 +52,10 @@ def test_buyer_starts_payment_and_gets_masked_phone(api):
 
 
 def test_seller_and_outsider_get_404_when_paying(api):
+    client, _, w = api
     for who in ("seller", "other"):
         r = as_user(api, who).post(
-            f"/enquiries/{api[2]['enquiry'].enquiry_id}/payments",
+            f"/enquiries/{w['enquiry'].enquiry_id}/payments",
             json={"phone_number": PAYER},
         )
         assert r.status_code == 404

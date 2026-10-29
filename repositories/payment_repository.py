@@ -264,3 +264,62 @@ def available_quantity(
         stmt = stmt.where(Enquiry.enquiry_id != exclude_enquiry_id)
     reserved = db.execute(stmt).scalar_one()
     return listing.quantity - Decimal(reserved)
+def _to_enum(val, enum_cls):
+    if val is None or isinstance(val, enum_cls):
+        return val
+    try:
+        return enum_cls(val)
+    except Exception:
+        return None
+
+
+def list_payments(
+    db: Session,
+    payment_status: str | PaymentStatus | None = None,
+    payout_status: str | PayoutStatus | None = None,
+    needs_review: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    **kwargs,
+) -> list[Payment]:
+    status_enum = _to_enum(kwargs.get("status", payment_status), PaymentStatus)
+    payout_enum = _to_enum(kwargs.get("payout_status", payout_status), PayoutStatus)
+    return list_all(
+        db,
+        status=status_enum,
+        payout_status=payout_enum,
+        needs_review=needs_review,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def list_payments_for_business(
+    db: Session,
+    business_id: UUID,
+    side: str = "buyer",
+    payment_status: str | PaymentStatus | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    **kwargs,
+) -> list[Payment]:
+    target_status = kwargs.get("status", payment_status)
+    status_enum = _to_enum(target_status, PaymentStatus)
+    return list_for_business(
+        db,
+        business_id,
+        side=side,
+        status=status_enum,
+        limit=limit,
+        offset=offset,
+    )
+def list_payment_events(db: Session, payment_id: UUID) -> list[PaymentEvent]:
+    return events_for_payment(db, payment_id)
+
+def list_pending_payments(db: Session, limit: int = 100) -> list[Payment]:
+    stmt = (
+        select(Payment)
+        .where(Payment.status == PaymentStatus.PENDING)
+        .limit(limit)
+    )
+    return list(db.execute(stmt).scalars())
