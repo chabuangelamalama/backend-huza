@@ -32,7 +32,9 @@ class EnquiryRepository:
             db.flush()
         return enquiry
 
-    def update(self, db: Session, db_obj: Enquiry, data: Dict[str, Any], commit: bool = True) -> Enquiry:
+    def update(
+        self, db: Session, db_obj: Enquiry, data: Dict[str, Any], commit: bool = True
+    ) -> Enquiry:
         """Modifies permitted fields safely against active database rows."""
         allowed_columns = self.model.__table__.columns.keys()
 

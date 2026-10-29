@@ -14,7 +14,9 @@ class MessageRepository:
         """Retrieves a single message by its primary tracking ID."""
         return db.get(self.model, message_id)
 
-    def get_all(self, db: Session, skip: int = 0, limit: int = 100) -> Sequence[Message]:
+    def get_all(
+        self, db: Session, skip: int = 0, limit: int = 100
+    ) -> Sequence[Message]:
         """Lists all messages globally with standard pagination support."""
         statement = select(self.model).offset(skip).limit(limit)
         return db.scalars(statement).all()
@@ -36,17 +38,19 @@ class MessageRepository:
             db.commit()
             db.refresh(message)
         else:
-            db.flush()  
+            db.flush()
         return message
 
-    def update(self, db: Session, db_obj: Message, data: Dict[str, Any], commit: bool = True) -> Message:
+    def update(
+        self, db: Session, db_obj: Message, data: Dict[str, Any], commit: bool = True
+    ) -> Message:
         """Modifies permitted fields safely against active database rows."""
         allowed_columns = self.model.__table__.columns.keys()
-        
+
         for field, value in data.items():
             if field in allowed_columns and field not in self._immutable_fields:
                 setattr(db_obj, field, value)
-                
+
         if commit:
             db.commit()
             db.refresh(db_obj)

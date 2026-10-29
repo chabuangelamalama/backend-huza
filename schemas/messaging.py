@@ -4,7 +4,9 @@ from datetime import datetime
 
 
 class MessageCreate(BaseModel):
-    content: str = Field(..., min_length=1, max_length=5000, description="The message text payload.")
+    content: str = Field(
+        ..., min_length=1, max_length=5000, description="The message text payload."
+    )
 
 
 class MessageRead(BaseModel):

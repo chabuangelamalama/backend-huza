@@ -48,7 +48,9 @@ def accept_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
     return enquiry_repository.update(
-        db, enquiry, {"status": EnquiryStatus.AGREED, "accepted_at": datetime.now(timezone.utc)}
+        db,
+        enquiry,
+        {"status": EnquiryStatus.AGREED, "accepted_at": datetime.now(timezone.utc)},
     )
 
 
@@ -57,18 +59,23 @@ def open_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
-    return enquiry_repository.update(
-        db, enquiry, {"status": EnquiryStatus.ENQUIRY}
-    )
+    return enquiry_repository.update(db, enquiry, {"status": EnquiryStatus.ENQUIRY})
 
 
 @router.post("/{enquiry_id}/decline", response_model=EnquiryRead)
-def decline_enquiry(enquiry_id: uuid.UUID, reason: str = "DECLINED", db: Session = Depends(get_db)):
+def decline_enquiry(
+    enquiry_id: uuid.UUID, reason: str = "DECLINED", db: Session = Depends(get_db)
+):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
     return enquiry_repository.update(
-        db, enquiry, {"status": EnquiryStatus.UNSUCCESSFUL, "failure_reason": FailureReason.DECLINED}
+        db,
+        enquiry,
+        {
+            "status": EnquiryStatus.UNSUCCESSFUL,
+            "failure_reason": FailureReason.DECLINED,
+        },
     )
 
 
@@ -78,17 +85,27 @@ def complete_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
     return enquiry_repository.update(
-        db, enquiry, {"status": EnquiryStatus.COMPLETED, "closed_at": datetime.now(timezone.utc)}
+        db,
+        enquiry,
+        {"status": EnquiryStatus.COMPLETED, "closed_at": datetime.now(timezone.utc)},
     )
 
 
 @router.post("/{enquiry_id}/cancel", response_model=EnquiryRead)
-def cancel_enquiry(enquiry_id: uuid.UUID, reason: str = "OTHER", db: Session = Depends(get_db)):
+def cancel_enquiry(
+    enquiry_id: uuid.UUID, reason: str = "OTHER", db: Session = Depends(get_db)
+):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
     return enquiry_repository.update(
-        db, enquiry, {"status": EnquiryStatus.CANCELLED, "failure_reason": FailureReason(reason), "closed_at": datetime.now(timezone.utc)}
+        db,
+        enquiry,
+        {
+            "status": EnquiryStatus.CANCELLED,
+            "failure_reason": FailureReason(reason),
+            "closed_at": datetime.now(timezone.utc),
+        },
     )
 
 
