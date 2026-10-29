@@ -3,11 +3,10 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, inspect, select
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
 from models import (
-    Base,
     Business,
     Enquiry,
     Listing,
@@ -24,11 +23,9 @@ from models.business import (
     PayoutNetwork,
     SupplierKind,
 )
-from models.enquiry import EnquiryStatus, FailureReason
-from models.listing import ListingStatus, ListingType, Stream, Unit
+from models.listing import ListingType, Stream, Unit
 from models.location import OsmType
 from models.notification import NotificationEvent
-from models.payment import PaymentStatus, PayoutStatus
 from models.user import UserRole
 
 # Dynamic fallback import for testing values
@@ -42,11 +39,13 @@ SECRET = "super-secret-callback-key"
 
 def make_settings(**kwargs):
     """Dynamic configuration helper mock for dependency injection."""
+
     class Settings:
         def __init__(self, **opts):
             for k, v in opts.items():
                 setattr(self, k, v)
             self.mpesa_callback_secret = SECRET
+
     return Settings(**kwargs)
 
 

@@ -1,6 +1,5 @@
 """Payment service tests against the Postgres test DB (skipped if it is not running)."""
 
-from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -10,12 +9,11 @@ from sqlalchemy import select
 from core.payment_config import MpesaSettings
 from models import PaymentEvent
 from models.business import ApprovalStatus, BusinessRole, PayoutNetwork
-from models.enquiry import EnquiryStatus, FailureReason
-from models.payment import PaymentStatus, PayoutStatus, RefundStatus
+from models.enquiry import EnquiryStatus
+from models.payment import PaymentStatus
 from models.user import UserRole
-from schemas.payment import seller_view
-from services.mpesa import MpesaRejected, MpesaResult, MpesaTransient, callback_token
-from services.payment_service import PaymentService, _now
+from services.mpesa import MpesaRejected, MpesaResult, MpesaTransient
+from services.payment_service import PaymentService
 from tests.test_models import (
     make_business,
     make_enquiry,

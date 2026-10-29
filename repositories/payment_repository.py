@@ -169,7 +169,7 @@ def unsettled(db: Session, older_than: datetime, limit: int) -> list[Payment]:
 
 
 def payouts_due(db: Session, limit: int) -> list[Payment]:
-    """Paid by the buyer, payout queued but not yet sent to MTN."""
+    """Paid by the buyer, payout queued but not yet sent to  MPESA ."""
     stmt = (
         select(Payment)
         .where(
@@ -264,6 +264,8 @@ def available_quantity(
         stmt = stmt.where(Enquiry.enquiry_id != exclude_enquiry_id)
     reserved = db.execute(stmt).scalar_one()
     return listing.quantity - Decimal(reserved)
+
+
 def _to_enum(val, enum_cls):
     if val is None or isinstance(val, enum_cls):
         return val
@@ -313,13 +315,12 @@ def list_payments_for_business(
         limit=limit,
         offset=offset,
     )
+
+
 def list_payment_events(db: Session, payment_id: UUID) -> list[PaymentEvent]:
     return events_for_payment(db, payment_id)
 
+
 def list_pending_payments(db: Session, limit: int = 100) -> list[Payment]:
-    stmt = (
-        select(Payment)
-        .where(Payment.status == PaymentStatus.PENDING)
-        .limit(limit)
-    )
+    stmt = select(Payment).where(Payment.status == PaymentStatus.PENDING).limit(limit)
     return list(db.execute(stmt).scalars())

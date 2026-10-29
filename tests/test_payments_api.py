@@ -32,11 +32,7 @@ def as_user(api, who):
 def start(api):
     client, state, w = api
     user = state["user"]
-    phone = (
-        getattr(user, "phone", None)
-        or getattr(user, "phone_number", None)
-        or PAYER
-    )
+    phone = getattr(user, "phone", None) or getattr(user, "phone_number", None) or PAYER
     return client.post(
         f"/enquiries/{w['enquiry'].enquiry_id}/payments",
         json={"phone_number": phone},

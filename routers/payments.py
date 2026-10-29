@@ -24,9 +24,6 @@ router = APIRouter(tags=["payments"])
 NO_STORE = {"Cache-Control": "no-store"}
 
 
-
-
-
 class PaymentStartRequest(BaseModel):
     """Request to initiate a payment."""
 
@@ -297,8 +294,7 @@ def my_payments(
         business = user.business
 
         is_supplier = (
-            business is not None
-            and business.business_role == BusinessRole.SUPPLIER
+            business is not None and business.business_role == BusinessRole.SUPPLIER
         )
 
         side = "seller" if is_supplier else "buyer"
