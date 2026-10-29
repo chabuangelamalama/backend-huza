@@ -54,6 +54,11 @@ class WrongPassword(AppError):
     detail = "Current password is incorrect."
 
 
+class WeakPassword(AppError):
+    status_code = 400
+    detail = "Password needs 8-128 characters and at least one digit."
+
+
 class PermissionDenied(AppError):
     status_code = 403
     detail = "You do not have permission to do this."

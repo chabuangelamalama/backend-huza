@@ -7,6 +7,7 @@ from core.exceptions import (
     AccountLocked,
     InvalidCredentials,
     InvalidResetToken,
+    WeakPassword,
     WrongPassword,
 )
 from core.security import (
@@ -32,6 +33,17 @@ def _aware(value: datetime | None) -> datetime | None:
     if value is not None and value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value
+
+
+def _check_password_strength(password: str) -> None:
+    """New passwords need 8-128 characters and at least one digit."""
+    if (
+        not password
+        or len(password) < 8
+        or len(password) > 128
+        or not any(c.isdigit() for c in password)
+    ):
+        raise WeakPassword()
 
 
 class AuthService:
@@ -80,6 +92,8 @@ class AuthService:
         self, user: User, current_password: str, new_password: str
     ) -> tuple[str, int]:
         """Returns a fresh (access_token, expires_in); older tokens stop working."""
+        _check_password_strength(new_password)
+
         now = _now()
         self._ensure_not_locked(user, now)
 
@@ -114,6 +128,8 @@ class AuthService:
 
     def reset_password(self, email: str, code: str, new_password: str) -> None:
         """Verifies the 6-digit OTP code and updates the password."""
+        _check_password_strength(new_password)
+
         user = self.users.get_by_email(normalize_email(email), for_update=True)
         if user is None:
             raise InvalidResetToken()

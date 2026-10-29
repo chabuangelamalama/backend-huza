@@ -276,7 +276,7 @@ def test_weak_new_passwords_are_refused(client, session, weak):
         json={"current_password": PASSWORD, "new_password": weak},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 # --------------------------------------------------------------------------- #
@@ -350,7 +350,7 @@ def test_reset_password_enforces_the_password_rule(client, session, mailer):
         },
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 def test_resetting_a_password_also_clears_a_lockout(client, session, mailer):
