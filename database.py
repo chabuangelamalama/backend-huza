@@ -1,6 +1,7 @@
 import os
+from collections.abc import Iterator
 from functools import lru_cache
-from typing import Iterator
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -11,8 +12,7 @@ def _session_factory() -> sessionmaker:
     url = os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
-
-    # Leverages optimized psycopg v3 engine configuration bindings
+    
     return sessionmaker(bind=create_engine(url, pool_pre_ping=True))
 
 
@@ -23,17 +23,3 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
-from collections.abc import Iterator
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-
-from core.config import get_settings
-
-engine = create_engine(get_settings().database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-
-
-def get_db() -> Iterator[Session]:
-    with SessionLocal() as db:
-        yield db
