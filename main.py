@@ -1,7 +1,5 @@
 from contextlib import asynccontextmanager
 
-from routers.enquiries import router as enquiries_router
-from routers import notification, price_guide
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -10,6 +8,7 @@ from core.config import get_settings
 from core.exceptions import AppError
 from database import check_database, engine
 from routers import admin, auth, notification, price_guide
+from routers.enquiries import router as enquiries_router
 from routers.listing import router as listing_router
 
 settings = get_settings()
@@ -28,7 +27,6 @@ if settings.is_production:
 else:
     cors_options = {"allow_origin_regex": r"https?://(localhost|127\.0\.0\.1)(:\d+)?"}
 
-app.include_router(enquiries_router)
 app.add_middleware(
     CORSMiddleware,
     allow_methods=["*"],
@@ -47,6 +45,7 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
     )
 
 
+app.include_router(enquiries_router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(listing_router)
