@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from models.location import Location, OsmType
 from models.user import User, UserRole
 
 
@@ -57,3 +58,18 @@ class UserRepository:
 
     def refresh(self, user: User) -> None:
         self.db.refresh(user)
+
+    def add(self, obj) -> None:
+        self.db.add(obj)
+
+    def flush(self) -> None:
+        self.db.flush()
+
+    def rollback(self) -> None:
+        self.db.rollback()
+
+    def find_location(self, osm_type: OsmType, osm_id: int) -> Location | None:
+        stmt = select(Location).where(
+            Location.osm_type == osm_type, Location.osm_id == osm_id
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
