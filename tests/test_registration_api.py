@@ -14,11 +14,9 @@ from models import Location, User
 from models.business import ApprovalStatus
 from schemas.registration import RegisterRequest
 from services.registration_service import manual_osm_id
-from tests.test_auth_api import (  # noqa: F401  (fixtures)
+from .test_auth_api import (
     PASSWORD,
     auth_header,
-     client,
-    mailer,
     make_admin,
     sign_in,
 )
