@@ -35,12 +35,12 @@ def make_location(session, osm_id=1, osm_type=OsmType.NODE):
     location = Location(
         osm_type=osm_type,
         osm_id=osm_id,
-        name="Remera",
-        display_name="Remera, Gasabo, Kigali City, Rwanda",
-        latitude=Decimal("-1.956000"),
-        longitude=Decimal("30.113000"),
-        district="Gasabo",
-        province="Kigali City",
+        name="Westlands",
+        display_name="Westlands, Nairobi, Nairobi County, Kenya",
+        latitude=Decimal("-1.267000"),
+        longitude=Decimal("36.807000"),
+        sub_county="Westlands",
+        county="Nairobi",
     )
     session.add(location)
     session.flush()
@@ -280,7 +280,7 @@ def test_only_a_supplier_can_have_a_supplier_kind(session):
 def test_payout_phone_needs_a_payout_network(session):
     location = make_location(session)
     with pytest.raises(IntegrityError):
-        make_business(session, location, payout_phone="0788000000")
+        make_business(session, location, payout_phone="+254712000000")
 
 
 def test_payout_phone_with_a_network_is_allowed(session):
@@ -288,10 +288,10 @@ def test_payout_phone_with_a_network_is_allowed(session):
     business = make_business(
         session,
         location,
-        payout_phone="0788000000",
-        payout_network=PayoutNetwork.MTN_MOMO,
+        payout_phone="+254712000000",
+        payout_network=PayoutNetwork.MPESA,
     )
-    assert business.payout_network == PayoutNetwork.MTN_MOMO
+    assert business.payout_network == PayoutNetwork.MPESA
 
 
 def test_user_role_defaults_to_business_user(session):
