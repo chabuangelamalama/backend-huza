@@ -1,4 +1,3 @@
-"""FastAPI dependencies: current user, role checks, and service wiring."""
 
 from fastapi import Depends, HTTPException, status
 from fastapi.params import Depends as DependsClass
