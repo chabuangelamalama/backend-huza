@@ -13,8 +13,7 @@ class EnquiryService:
         enquiry = enquiry_repository.get(db, enquiry_id)
         if not enquiry:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, 
-                detail="not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="not found"
             )
         return enquiry
 
@@ -40,19 +39,12 @@ class EnquiryService:
         return enquiry_repository.update(
             db,
             enquiry,
-            {
-                "status": EnquiryStatus.AGREED, 
-                "accepted_at": datetime.now(timezone.utc)
-            },
+            {"status": EnquiryStatus.AGREED, "accepted_at": datetime.now(timezone.utc)},
         )
 
     def open_enquiry(self, db: Session, enquiry_id: uuid.UUID):
         enquiry = self._get_enquiry_or_404(db, enquiry_id)
-        return enquiry_repository.update(
-            db, 
-            enquiry, 
-            {"status": EnquiryStatus.ENQUIRY}
-        )
+        return enquiry_repository.update(db, enquiry, {"status": EnquiryStatus.ENQUIRY})
 
     def decline_enquiry(self, db: Session, enquiry_id: uuid.UUID):
         enquiry = self._get_enquiry_or_404(db, enquiry_id)
@@ -71,8 +63,8 @@ class EnquiryService:
             db,
             enquiry,
             {
-                "status": EnquiryStatus.COMPLETED, 
-                "closed_at": datetime.now(timezone.utc)
+                "status": EnquiryStatus.COMPLETED,
+                "closed_at": datetime.now(timezone.utc),
             },
         )
 
