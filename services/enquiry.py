@@ -1,8 +1,9 @@
 import uuid
+from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from models.enquiry import EnquiryStatus
+from models.enquiry import EnquiryStatus, FailureReason
 from repositories.enquiry import enquiry_repository
 from schemas.enquiry import EnquiryCreate
 
@@ -33,9 +34,16 @@ class EnquiryService:
     def get_enquiry(self, db: Session, enquiry_id: uuid.UUID):
         return self._get_enquiry_or_404(db, enquiry_id)
 
+    
+
     def open_enquiry(self, db: Session, enquiry_id: uuid.UUID):
         enquiry = self._get_enquiry_or_404(db, enquiry_id)
         return enquiry_repository.update(db, enquiry, {"status": EnquiryStatus.ENQUIRY})
 
+    
+
+    
+
+   
 
 enquiry_service = EnquiryService()

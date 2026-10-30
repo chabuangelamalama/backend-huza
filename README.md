@@ -45,11 +45,11 @@ Coverage is reported for review, with no minimum percentage imposed initially.
 5. Resolve the feedback in GitHub Actions. When the PR gate passes, the bot marks
    the draft ready. Ask a peer to review and approve before merging.
 
-| Workflow        | What happens                                                                                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflow | What happens |
+|---|---|
 | `pr-checks.yml` | PR requirements and lint/format run in parallel. Both must pass before CI is called. A final **PR gate** fails for any failed, cancelled, or skipped required stage. |
-| `ci.yml`        | A reusable workflow runs pytest and coverage. It is called by PR checks and again before deployment.                                                                 |
-| `deploy.yml`    | A push to `main` reruns CI on the merged commit, deploys to Heroku, and checks `/health`. Manual runs are restricted to `main`.                                      |
+| `ci.yml` | A reusable workflow runs pytest and coverage. It is called by PR checks and again before deployment. |
+| `deploy.yml` | A push to `main` reruns CI on the merged commit, deploys to Heroku, and checks `/health`. Manual runs are restricted to `main`. |
 
 PR requirements run again when the PR description or labels change, as well as
 on new commits. The privileged feedback job never checks out PR code and ignores
@@ -92,12 +92,12 @@ on Heroku's `$PORT`.
 
 Create a GitHub environment named **production** and configure:
 
-| Kind     | Name              | Value                         |
-| -------- | ----------------- | ----------------------------- |
-| Secret   | `HEROKU_API_KEY`  | Your Heroku API key           |
-| Secret   | `HEROKU_EMAIL`    | Your Heroku account email     |
-| Variable | `HEROKU_APP_NAME` | The existing Heroku app name  |
-| Variable | `HEROKU_APP_URL`  | Its complete public HTTPS URL |
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `HEROKU_API_KEY` | Your Heroku API key |
+| Secret | `HEROKU_EMAIL` | Your Heroku account email |
+| Variable | `HEROKU_APP_NAME` | The existing Heroku app name |
+| Variable | `HEROKU_APP_URL` | Its complete public HTTPS URL |
 
 Restrict the production environment to `main`. Set application configuration
 such as `DATABASE_URL` and `JWT_SECRET` on Heroku when your features need it;
