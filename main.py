@@ -7,8 +7,9 @@ from fastapi.responses import JSONResponse
 from core.config import get_settings
 from core.exceptions import AppError
 from database import check_database, engine
-from routers import admin, auth, notification, price_guide
+from routers import admin, auth, businesses, notification, price_guide
 from routers.listing import router as listing_router
+from services.errors import ServiceError
 
 settings = get_settings()
 
@@ -51,6 +52,11 @@ app.include_router(price_guide.router)
 app.include_router(notification.router)
 
 
+@app.exception_handler(ServiceError)
+def handle_service_error(request: Request, exc: ServiceError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Let deployment verification confirm that the API is responding."""
@@ -67,3 +73,6 @@ def health_db():
             status_code=503, content={"status": "error", "database": "down"}
         )
     return {"status": "ok", "database": "up"}
+
+
+app.include_router(businesses.router)

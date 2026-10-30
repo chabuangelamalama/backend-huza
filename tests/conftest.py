@@ -38,3 +38,16 @@ def session(engine):
     db.close()
     transaction.rollback()
     connection.close()
+
+
+@pytest.fixture
+def client(session):
+    from fastapi.testclient import TestClient
+
+    from database import get_db
+    from main import app
+
+    app.dependency_overrides[get_db] = lambda: session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
