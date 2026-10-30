@@ -117,7 +117,6 @@ def forgot_password(
 ):
     """Request a password-reset email."""
     message = service.prepare_password_reset(body.get("email"))
-
     if message is not None:
         background.add_task(mailer.send, message)
 
