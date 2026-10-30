@@ -62,6 +62,11 @@ class User(TimestampMixin, Base):
     reset_code_hash = Column(String(255), nullable=True)
     reset_code_expires_at = timestamptz(nullable=True)
 
+    # Email verification: same 6-digit-code shape as the reset code
+    email_verified_at = timestamptz(nullable=True)
+    verify_code_hash = Column(String(255), nullable=True)
+    verify_code_expires_at = timestamptz(nullable=True)
+
     __table_args__ = (
         CheckConstraint(
             "(user_role = 'ADMIN') = (business_id IS NULL)",

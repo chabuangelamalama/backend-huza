@@ -1,7 +1,9 @@
 import itertools
 from decimal import Decimal
 
+from core.config import get_settings
 from core.security import create_access_token
+from main import app
 from models import Business, Location, User
 from models.business import ApprovalStatus, BusinessRole, BusinessType
 from models.location import OsmType
@@ -80,5 +82,8 @@ def make_user(session, business=None, **changes):
 
 
 def auth(user):
-    token = create_access_token(user.user_id, user.user_role, user.token_version)
+    settings = app.dependency_overrides.get(get_settings, get_settings)()
+    token = create_access_token(
+        user.user_id, user.user_role, user.token_version, settings=settings
+    )
     return {"Authorization": f"Bearer {token.token}"}

@@ -181,3 +181,33 @@ def build_password_reset_email(
         text=text,
         html=html_body,
     )
+
+
+def build_verification_code_email(
+    user: User, code: str, settings: Settings
+) -> OutgoingEmail:
+    safe_name = html.escape(user.first_name)
+    duration_str = _duration(settings.verify_code_minutes)
+    text = (
+        f"Hello {user.first_name},\n\n"
+        f"Welcome to HUZA. Your email verification code is: {code}\n\n"
+        f"This code expires in {duration_str}. If you did not create an account, "
+        f"you can ignore this email.\n\n"
+        f"- The HUZA team\n"
+    )
+    html_body = (
+        '<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;'
+        'padding:24px;">'
+        f"<p>Hello {safe_name},</p>"
+        "<p>Welcome to HUZA. Enter this code in the app to verify your email:</p>"
+        '<p style="font-size:32px;font-weight:700;letter-spacing:6px;color:#113225;">'
+        f"{code}</p>"
+        f'<p style="color:#666;font-size:13px">This code expires in {duration_str}.</p>'
+        '<p style="color:#666;font-size:13px">The HUZA team</p></div>'
+    )
+    return OutgoingEmail(
+        to=user.email,
+        subject="Your HUZA email verification code",
+        text=text,
+        html=html_body,
+    )
