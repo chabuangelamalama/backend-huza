@@ -1,22 +1,25 @@
-import uuid
-from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from models.location import OsmType
-from schemas.common import Coordinate, Text, Text100, Text255
+from schemas.common import clean_text
 
 
 class LocationCreate(BaseModel):
     osm_type: OsmType
     osm_id: int = Field(gt=0)
-    name: Text255
-    display_name: Text
+    name: str = Field(min_length=1, max_length=255)
+    display_name: str = Field(min_length=1)
     latitude: Decimal = Field(ge=-90, le=90, max_digits=9, decimal_places=6)
     longitude: Decimal = Field(ge=-180, le=180, max_digits=9, decimal_places=6)
-    sub_county: Text100
-    county: Text100
+    sub_county: str = Field(min_length=1, max_length=100)
+    county: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name", "display_name", "sub_county", "county", mode="before")
+    @classmethod
+    def tidy_text(cls, value: object) -> object:
+        return clean_text(value)
 
     @field_validator("osm_type", mode="before")
     @classmethod
@@ -34,36 +37,16 @@ class LocationCreate(BaseModel):
             return value
 
 
-class LocationRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    location_id: uuid.UUID
-    osm_type: OsmType
-    osm_id: int
-    name: str
-    display_name: str
-    latitude: Coordinate
-    longitude: Coordinate
-    sub_county: str
-    county: str
-    created_at: datetime
-
-
-class LocationSummary(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    location_id: uuid.UUID
-    name: str
-    sub_county: str
-    county: str
-
-
 class PlaceResult(BaseModel):
     osm_type: OsmType
     osm_id: int
     name: str
     display_name: str
-    latitude: Coordinate
-    longitude: Coordinate
+    latitude: Decimal
+    longitude: Decimal
     sub_county: str
     county: str
+
+    @field_serializer("latitude", "longitude", when_used="json")
+    def as_number(self, value: Decimal) -> float:
+        return float(value)

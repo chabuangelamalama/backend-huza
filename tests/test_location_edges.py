@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+from pydantic import ValidationError
 
 from schemas.locations import LocationCreate
 from services.locations import to_place
@@ -52,3 +54,8 @@ def test_search_result_without_coordinates_is_skipped():
     }
 
     assert to_place(item) is None
+
+
+def test_place_name_that_is_a_number_is_rejected():
+    with pytest.raises(ValidationError):
+        LocationCreate(**location_payload(name=123))
