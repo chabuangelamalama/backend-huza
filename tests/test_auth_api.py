@@ -122,7 +122,6 @@ def token_for(client, user):
     return sign_in(client, user.email).json()["access_token"]
 
 
-
 def test_login_returns_a_token_and_the_user(client, session):
     user = make_business_user(session)
 
