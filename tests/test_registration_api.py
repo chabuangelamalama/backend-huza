@@ -3,8 +3,6 @@
 The first block needs no database. The rest need the Postgres test database from
 conftest.py and are skipped automatically when it is not available."""
 
-# ruff: noqa: F811  (the imported fixtures are used as test arguments)
-
 import re
 import uuid
 from decimal import Decimal
@@ -19,8 +17,6 @@ from services.registration_service import manual_osm_id
 from tests.test_auth_api import (  # noqa: F401  (fixtures)
     PASSWORD,
     auth_header,
-    client,
-    mailer,
     make_admin,
     sign_in,
 )
@@ -63,18 +59,13 @@ def register(client, **changes):
     return client.post("/auth/register", json=payload(**changes))
 
 
-# --------------------------------------------------------------------------- #
-# No database needed
-# --------------------------------------------------------------------------- #
-
-
 def test_the_request_rules_match_the_database_rules():
     with pytest.raises(ValidationError):
         RegisterRequest(**payload(password="short1"))
     with pytest.raises(ValidationError):
         RegisterRequest(**payload(password="nodigitshere"))
     with pytest.raises(ValidationError):
-        RegisterRequest(**payload(business_role="BUYER"))  # supplier_kind is set
+        RegisterRequest(**payload(business_role="BUYER"))
     bad_consumer = payload()
     bad_consumer["business"]["business_type"] = "CONSUMER"
     with pytest.raises(ValidationError):

@@ -24,7 +24,7 @@ from services.email_service import OutgoingEmail, build_verification_code_email
 
 SIX_DP = Decimal("0.000001")
 EDITABLE_STATUSES = (ApprovalStatus.PENDING, ApprovalStatus.REJECTED)
-# These columns are NOT NULL, so a null in an update is ignored.
+
 REQUIRED_FIELDS = {"business_legal_name", "business_type", "streams"}
 
 
