@@ -5,8 +5,10 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from core.dependencies import get_current_user
 from database import get_db
 from models.enquiry import EnquiryStatus, FailureReason
+from models.user import User
 from repositories.enquiry import enquiry_repository
 from schemas.enquiry import EnquiryCreate, EnquiryRead
 
@@ -14,7 +16,11 @@ router = APIRouter(prefix="/api/v1/enquiries", tags=["Enquiries"])
 
 
 @router.post("/", response_model=EnquiryRead, status_code=status.HTTP_201_CREATED)
-def create_enquiry(payload: EnquiryCreate, db: Session = Depends(get_db)):
+def create_enquiry(
+    payload: EnquiryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     total_amount = payload.quantity * payload.unit_price
     data = {
         "listing_id": payload.listing_id,
@@ -30,12 +36,19 @@ def create_enquiry(payload: EnquiryCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=List[EnquiryRead])
-def list_enquiries(db: Session = Depends(get_db)):
+def list_enquiries(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return enquiry_repository.get_all(db)
 
 
 @router.get("/{enquiry_id}", response_model=EnquiryRead)
-def get_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_enquiry(
+    enquiry_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
@@ -43,7 +56,11 @@ def get_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
 
 
 @router.post("/{enquiry_id}/accept", response_model=EnquiryRead)
-def accept_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
+def accept_enquiry(
+    enquiry_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
@@ -55,7 +72,11 @@ def accept_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
 
 
 @router.post("/{enquiry_id}/open", response_model=EnquiryRead)
-def open_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
+def open_enquiry(
+    enquiry_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
@@ -64,7 +85,10 @@ def open_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.post("/{enquiry_id}/decline", response_model=EnquiryRead)
 def decline_enquiry(
-    enquiry_id: uuid.UUID, reason: str = "DECLINED", db: Session = Depends(get_db)
+    enquiry_id: uuid.UUID,
+    reason: str = "DECLINED",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
@@ -80,7 +104,11 @@ def decline_enquiry(
 
 
 @router.post("/{enquiry_id}/complete", response_model=EnquiryRead)
-def complete_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
+def complete_enquiry(
+    enquiry_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="not found")
@@ -93,7 +121,10 @@ def complete_enquiry(enquiry_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.post("/{enquiry_id}/cancel", response_model=EnquiryRead)
 def cancel_enquiry(
-    enquiry_id: uuid.UUID, reason: str = "OTHER", db: Session = Depends(get_db)
+    enquiry_id: uuid.UUID,
+    reason: str = "OTHER",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     enquiry = enquiry_repository.get(db, enquiry_id)
     if not enquiry:
@@ -110,5 +141,8 @@ def cancel_enquiry(
 
 
 @router.post("/{enquiry_id}/payments", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-def start_payment(enquiry_id: uuid.UUID):
+def start_payment(
+    enquiry_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+):
     return {"detail": "not implemented"}
