@@ -566,12 +566,12 @@ def location(session):
     location = Location(
         osm_type=OsmType.NODE,
         osm_id=2001,
-        name="Remera",
-        display_name="Remera, Gasabo, Kigali, Rwanda",
-        latitude=Decimal("-1.951100"),
-        longitude=Decimal("30.112600"),
-        district="Gasabo",
-        province="City of Kigali",
+        name="Westlands",
+        display_name="Westlands, Nairobi, Nairobi County, Kenya",
+        latitude=Decimal("-1.267500"),
+        longitude=Decimal("36.810800"),
+        sub_county="Westlands",
+        county="Nairobi",
     )
     session.add(location)
     session.flush()

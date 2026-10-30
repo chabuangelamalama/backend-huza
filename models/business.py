@@ -33,7 +33,7 @@ class ApprovalStatus(StrEnum):
 
 
 class PayoutNetwork(StrEnum):
-    MTN_MOMO = "MTN_MOMO"
+    MPESA = "MPESA"
 
 
 business_role_t = pg_enum(BusinessRole, "business_role")
