@@ -1,10 +1,17 @@
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from core.dependencies import get_auth_service, get_current_user, get_mailer
+from core.dependencies import (
+    get_auth_service,
+    get_current_user,
+    get_mailer,
+    get_registration_service,
+)
 from models.user import User
+from schemas.registration import CodeRequest, RegisterRequest
 from services.auth_service import AuthService
 from services.email_service import EmailSender
+from services.registration_service import RegistrationService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -17,12 +24,15 @@ def user_dict(user: User) -> dict:
         "id": str(user.user_id),
         "email": user.email,
         "role": user.user_role.value,
+        "email_verified": user.email_verified_at is not None,
     }
 
     business = user.business
     if business is not None:
         data["business"] = {
             "approval_status": business.approval_status.value,
+            "business_role": business.business_role.value,
+            "rejection_reason": business.rejection_reason,
         }
 
     return data
@@ -126,3 +136,48 @@ def reset_password(
         body.get("password"),
     )
     return {"detail": "Password changed. Sign in with your new password."}
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+def register(
+    background: BackgroundTasks,
+    body: RegisterRequest,
+    registration: RegistrationService = Depends(get_registration_service),
+    service: AuthService = Depends(get_auth_service),
+    mailer: EmailSender = Depends(get_mailer),
+):
+    """Create an account with its business (PENDING approval) and sign it in."""
+    user, message = registration.register(body)
+    background.add_task(mailer.send, message)
+    token, expires_in = service.issue_token(user)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": expires_in,
+        "user": user_dict(user),
+    }
+
+
+@router.post("/verify-email")
+def verify_email(
+    body: CodeRequest,
+    user: User = Depends(get_current_user),
+    registration: RegistrationService = Depends(get_registration_service),
+):
+    """Confirm the email address with the 6-digit code that was emailed."""
+    registration.verify_email(user, body.code)
+    return user_dict(user)
+
+
+@router.post("/resend-verification", status_code=status.HTTP_202_ACCEPTED)
+def resend_verification(
+    background: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    registration: RegistrationService = Depends(get_registration_service),
+    mailer: EmailSender = Depends(get_mailer),
+):
+    """Email a new verification code."""
+    message = registration.send_verification(user)
+    if message is not None:
+        background.add_task(mailer.send, message)
+    return {"detail": "If your email still needs verifying, a new code is on its way."}

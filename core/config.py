@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     access_token_minutes: int = Field(default=30, gt=0)
     reset_token_minutes: int = Field(default=60, gt=0)
     verify_token_minutes: int = Field(default=1440, gt=0)  # 24 hours
+    verify_code_minutes: int = Field(default=30, gt=0)
     max_failed_logins: int = Field(default=5, gt=0)
     lockout_minutes: int = Field(default=15, gt=0)
 

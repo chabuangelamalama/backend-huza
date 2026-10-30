@@ -79,6 +79,10 @@ class AuthService:
         token, expires_in = self._issue_token(user)
         return token, expires_in, user
 
+    def issue_token(self, user: User) -> tuple[str, int]:
+        """A fresh access token, used right after registration."""
+        return self._issue_token(user)
+
     def logout(self, user: User) -> None:
         """Revokes every token this user has, on every device."""
         user.token_version = (user.token_version or 0) + 1
