@@ -4,7 +4,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from main import app
-from models.enquiry import EnquiryStatus, FailureReason
+from models.enquiry import EnquiryStatus
 
 
 def test_create_enquiry(session):
@@ -39,7 +39,6 @@ def test_get_enquiry_not_found(session):
     assert response.status_code == 404
 
 
-
 def test_open_enquiry(session):
     with TestClient(app) as client:
         payload = {
@@ -56,13 +55,3 @@ def test_open_enquiry(session):
         response = client.post(f"/api/v1/enquiries/{enquiry_id}/open")
     assert response.status_code == 200
     assert response.json()["status"] == EnquiryStatus.ENQUIRY.value
-
-
-
-
-
-
-
-
-
-  
