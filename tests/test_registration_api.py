@@ -17,6 +17,8 @@ from services.registration_service import manual_osm_id
 from tests.test_auth_api import (  # noqa: F401  (fixtures)
     PASSWORD,
     auth_header,
+     client,
+    mailer,
     make_admin,
     sign_in,
 )
