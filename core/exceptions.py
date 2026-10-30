@@ -67,3 +67,23 @@ class PermissionDenied(AppError):
 class NotFound(AppError):
     status_code = 404
     detail = "Not found."
+
+
+class EmailTaken(AppError):
+    status_code = 409
+    detail = "An account with this email already exists."
+
+
+class InvalidVerificationCode(AppError):
+    status_code = 400
+    detail = "This verification code is invalid or has expired."
+
+
+class BusinessNotEditable(AppError):
+    status_code = 409
+    detail = "Your business details cannot be changed right now."
+
+
+class InvalidBusinessDetails(AppError):
+    status_code = 400
+    detail = "These business details are not allowed."

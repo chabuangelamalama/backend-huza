@@ -7,8 +7,12 @@ from fastapi.responses import JSONResponse
 from core.config import get_settings
 from core.exceptions import AppError
 from database import check_database, engine
+<<<<<<< HEAD
 from routers import admin, auth, notification, price_guide
 from routers.enquiries import router as enquiries_router
+=======
+from routers import admin, auth, business, notification, price_guide
+>>>>>>> develop
 from routers.listing import router as listing_router
 
 settings = get_settings()
@@ -48,6 +52,7 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
 app.include_router(enquiries_router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(business.router)
 app.include_router(listing_router)
 app.include_router(price_guide.router)
 app.include_router(notification.router)

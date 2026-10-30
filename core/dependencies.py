@@ -1,5 +1,3 @@
-"""FastAPI dependencies: current user, role checks, and service wiring."""
-
 from fastapi import Depends, HTTPException, status
 from fastapi.params import Depends as DependsClass
 from fastapi.security import OAuth2PasswordBearer
@@ -13,14 +11,10 @@ from models.user import User, UserRole
 from repositories.user_repository import UserRepository
 from services.auth_service import AuthService
 from services.email_service import EmailSender, LoggingEmailSender, SmtpEmailSender
+from services.registration_service import RegistrationService
 from services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
-
-
-# --------------------------------------------------------------------------- #
-# Wiring
-# --------------------------------------------------------------------------- #
 
 
 def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
@@ -32,6 +26,13 @@ def get_auth_service(
     settings: Settings = Depends(get_settings),
 ) -> AuthService:
     return AuthService(users, settings)
+
+
+def get_registration_service(
+    users: UserRepository = Depends(get_user_repository),
+    settings: Settings = Depends(get_settings),
+) -> RegistrationService:
+    return RegistrationService(users, settings)
 
 
 def get_user_service(
