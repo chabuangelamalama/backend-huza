@@ -34,51 +34,16 @@ class EnquiryService:
     def get_enquiry(self, db: Session, enquiry_id: uuid.UUID):
         return self._get_enquiry_or_404(db, enquiry_id)
 
-    def accept_enquiry(self, db: Session, enquiry_id: uuid.UUID):
-        enquiry = self._get_enquiry_or_404(db, enquiry_id)
-        return enquiry_repository.update(
-            db,
-            enquiry,
-            {"status": EnquiryStatus.AGREED, "accepted_at": datetime.now(timezone.utc)},
-        )
+    
 
     def open_enquiry(self, db: Session, enquiry_id: uuid.UUID):
         enquiry = self._get_enquiry_or_404(db, enquiry_id)
         return enquiry_repository.update(db, enquiry, {"status": EnquiryStatus.ENQUIRY})
 
-    def decline_enquiry(self, db: Session, enquiry_id: uuid.UUID):
-        enquiry = self._get_enquiry_or_404(db, enquiry_id)
-        return enquiry_repository.update(
-            db,
-            enquiry,
-            {
-                "status": EnquiryStatus.UNSUCCESSFUL,
-                "failure_reason": FailureReason.DECLINED,
-            },
-        )
+    
 
-    def complete_enquiry(self, db: Session, enquiry_id: uuid.UUID):
-        enquiry = self._get_enquiry_or_404(db, enquiry_id)
-        return enquiry_repository.update(
-            db,
-            enquiry,
-            {
-                "status": EnquiryStatus.COMPLETED,
-                "closed_at": datetime.now(timezone.utc),
-            },
-        )
+    
 
-    def cancel_enquiry(self, db: Session, enquiry_id: uuid.UUID, reason: str):
-        enquiry = self._get_enquiry_or_404(db, enquiry_id)
-        return enquiry_repository.update(
-            db,
-            enquiry,
-            {
-                "status": EnquiryStatus.CANCELLED,
-                "failure_reason": FailureReason(reason),
-                "closed_at": datetime.now(timezone.utc),
-            },
-        )
-
+   
 
 enquiry_service = EnquiryService()
