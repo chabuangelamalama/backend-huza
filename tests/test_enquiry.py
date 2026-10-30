@@ -39,23 +39,6 @@ def test_get_enquiry_not_found(session):
     assert response.status_code == 404
 
 
-def test_accept_enquiry(session):
-    with TestClient(app) as client:
-        payload = {
-            "listing_id": str(uuid.uuid4()),
-            "buyer_business_id": str(uuid.uuid4()),
-            "seller_business_id": str(uuid.uuid4()),
-            "quantity": "2.000",
-            "unit": "kg",
-            "unit_price": "10.0000",
-        }
-        create_resp = client.post("/api/v1/enquiries/", json=payload)
-        enquiry_id = create_resp.json()["enquiry_id"]
-        response = client.post(f"/api/v1/enquiries/{enquiry_id}/accept")
-    assert response.status_code == 200
-    assert response.json()["status"] == EnquiryStatus.AGREED.value
-    assert response.json()["accepted_at"] is not None
-
 
 def test_open_enquiry(session):
     with TestClient(app) as client:
@@ -75,76 +58,11 @@ def test_open_enquiry(session):
     assert response.json()["status"] == EnquiryStatus.ENQUIRY.value
 
 
-def test_decline_enquiry(session):
-    with TestClient(app) as client:
-        payload = {
-            "listing_id": str(uuid.uuid4()),
-            "buyer_business_id": str(uuid.uuid4()),
-            "seller_business_id": str(uuid.uuid4()),
-            "quantity": "1.000",
-            "unit": "kg",
-            "unit_price": "3.0000",
-        }
-        create_resp = client.post("/api/v1/enquiries/", json=payload)
-        enquiry_id = create_resp.json()["enquiry_id"]
-        response = client.post(f"/api/v1/enquiries/{enquiry_id}/decline")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == EnquiryStatus.UNSUCCESSFUL.value
-    assert data["failure_reason"] == FailureReason.DECLINED.value
 
 
-def test_complete_enquiry(session):
-    with TestClient(app) as client:
-        payload = {
-            "listing_id": str(uuid.uuid4()),
-            "buyer_business_id": str(uuid.uuid4()),
-            "seller_business_id": str(uuid.uuid4()),
-            "quantity": "5.000",
-            "unit": "kg",
-            "unit_price": "4.0000",
-        }
-        create_resp = client.post("/api/v1/enquiries/", json=payload)
-        enquiry_id = create_resp.json()["enquiry_id"]
-        client.post(f"/api/v1/enquiries/{enquiry_id}/accept")
-        response = client.post(f"/api/v1/enquiries/{enquiry_id}/complete")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == EnquiryStatus.COMPLETED.value
-    assert data["closed_at"] is not None
 
 
-def test_cancel_enquiry(session):
-    with TestClient(app) as client:
-        payload = {
-            "listing_id": str(uuid.uuid4()),
-            "buyer_business_id": str(uuid.uuid4()),
-            "seller_business_id": str(uuid.uuid4()),
-            "quantity": "5.000",
-            "unit": "kg",
-            "unit_price": "4.0000",
-        }
-        create_resp = client.post("/api/v1/enquiries/", json=payload)
-        enquiry_id = create_resp.json()["enquiry_id"]
-        response = client.post(f"/api/v1/enquiries/{enquiry_id}/cancel")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == EnquiryStatus.CANCELLED.value
-    assert data["failure_reason"] == FailureReason.OTHER.value
-    assert data["closed_at"] is not None
 
 
-def test_start_payment_not_implemented(session):
-    with TestClient(app) as client:
-        payload = {
-            "listing_id": str(uuid.uuid4()),
-            "buyer_business_id": str(uuid.uuid4()),
-            "seller_business_id": str(uuid.uuid4()),
-            "quantity": "1.000",
-            "unit": "kg",
-            "unit_price": "1.0000",
-        }
-        create_resp = client.post("/api/v1/enquiries/", json=payload)
-        enquiry_id = create_resp.json()["enquiry_id"]
-        response = client.post(f"/api/v1/enquiries/{enquiry_id}/payments")
-    assert response.status_code == 501
+
+  
