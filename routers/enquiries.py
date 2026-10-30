@@ -1,16 +1,15 @@
 import uuid
-from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from core.dependencies import get_current_user
 from database import get_db
-from models.enquiry import EnquiryStatus, FailureReason
 from models.user import User
 from repositories.enquiry import enquiry_repository
 from schemas.enquiry import EnquiryCreate, EnquiryRead
+from services.enquiry import enquiry_service
 
 router = APIRouter(prefix="/api/v1/enquiries", tags=["Enquiries"])
 
@@ -21,18 +20,7 @@ def create_enquiry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    total_amount = payload.quantity * payload.unit_price
-    data = {
-        "listing_id": payload.listing_id,
-        "buyer_business_id": payload.buyer_business_id,
-        "seller_business_id": payload.seller_business_id,
-        "quantity": payload.quantity,
-        "unit": payload.unit,
-        "unit_price": payload.unit_price,
-        "total_amount": total_amount,
-        "status": EnquiryStatus.ENQUIRY,
-    }
-    return enquiry_repository.create(db, data)
+    return enquiry_service.create_enquiry(db, payload)
 
 
 @router.get("/", response_model=List[EnquiryRead])
@@ -49,10 +37,7 @@ def get_enquiry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enquiry = enquiry_repository.get(db, enquiry_id)
-    if not enquiry:
-        raise HTTPException(status_code=404, detail="not found")
-    return enquiry
+    return enquiry_service.get_enquiry(db, enquiry_id)
 
 
 @router.post("/{enquiry_id}/accept", response_model=EnquiryRead)
@@ -61,14 +46,7 @@ def accept_enquiry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enquiry = enquiry_repository.get(db, enquiry_id)
-    if not enquiry:
-        raise HTTPException(status_code=404, detail="not found")
-    return enquiry_repository.update(
-        db,
-        enquiry,
-        {"status": EnquiryStatus.AGREED, "accepted_at": datetime.now(timezone.utc)},
-    )
+    return enquiry_service.accept_enquiry(db, enquiry_id)
 
 
 @router.post("/{enquiry_id}/open", response_model=EnquiryRead)
@@ -77,10 +55,7 @@ def open_enquiry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enquiry = enquiry_repository.get(db, enquiry_id)
-    if not enquiry:
-        raise HTTPException(status_code=404, detail="not found")
-    return enquiry_repository.update(db, enquiry, {"status": EnquiryStatus.ENQUIRY})
+    return enquiry_service.open_enquiry(db, enquiry_id)
 
 
 @router.post("/{enquiry_id}/decline", response_model=EnquiryRead)
@@ -90,17 +65,7 @@ def decline_enquiry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enquiry = enquiry_repository.get(db, enquiry_id)
-    if not enquiry:
-        raise HTTPException(status_code=404, detail="not found")
-    return enquiry_repository.update(
-        db,
-        enquiry,
-        {
-            "status": EnquiryStatus.UNSUCCESSFUL,
-            "failure_reason": FailureReason.DECLINED,
-        },
-    )
+    return enquiry_service.decline_enquiry(db, enquiry_id)
 
 
 @router.post("/{enquiry_id}/complete", response_model=EnquiryRead)
@@ -109,14 +74,7 @@ def complete_enquiry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enquiry = enquiry_repository.get(db, enquiry_id)
-    if not enquiry:
-        raise HTTPException(status_code=404, detail="not found")
-    return enquiry_repository.update(
-        db,
-        enquiry,
-        {"status": EnquiryStatus.COMPLETED, "closed_at": datetime.now(timezone.utc)},
-    )
+    return enquiry_service.complete_enquiry(db, enquiry_id)
 
 
 @router.post("/{enquiry_id}/cancel", response_model=EnquiryRead)
@@ -126,18 +84,7 @@ def cancel_enquiry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enquiry = enquiry_repository.get(db, enquiry_id)
-    if not enquiry:
-        raise HTTPException(status_code=404, detail="not found")
-    return enquiry_repository.update(
-        db,
-        enquiry,
-        {
-            "status": EnquiryStatus.CANCELLED,
-            "failure_reason": FailureReason(reason),
-            "closed_at": datetime.now(timezone.utc),
-        },
-    )
+    return enquiry_service.cancel_enquiry(db, enquiry_id, reason)
 
 
 @router.post("/{enquiry_id}/payments", status_code=status.HTTP_501_NOT_IMPLEMENTED)
