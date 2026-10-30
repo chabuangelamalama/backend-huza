@@ -55,13 +55,23 @@ class Payment(TimestampMixin, Base):
     amount = Column(Numeric(19, 4), nullable=False)
     phone_number = Column("payer_phone", Text, nullable=False)
     reference_id = Column(String(100), nullable=False, unique=True)
-    mpesa_receipt_number = Column("momo_transaction_id", String(100), nullable=True)
+    mpesa_receipt_number = Column("mpesa_transaction_id", String(100), nullable=True)
     status = Column(
         payment_status_t,
         nullable=False,
         default=PaymentStatus.PENDING,
         server_default=text("'PENDING'"),
     )
+    mpesa_checkout_request_id = Column(
+    String(100),
+    nullable=True,
+    unique=True,
+)
+
+    mpesa_merchant_request_id = Column(
+    String(100),
+    nullable=True,
+)
     failure_reason = Column(Text, nullable=True)
     payout_status = Column(
         payout_status_t,

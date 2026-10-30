@@ -1,8 +1,16 @@
+
 """Payment endpoints (buyer, seller, M-Pesa callback, admin)."""
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -49,8 +57,9 @@ class RefundRequest(BaseModel):
     failure_reason: str | None = None
 
 
-# --------------------------------------------------------- service dependency
-
+# ---------------------------------------------------------
+# Service dependency
+# ---------------------------------------------------------
 
 def get_service(
     db: Session = Depends(get_db),
@@ -60,22 +69,31 @@ def get_service(
     return PaymentService(db, mpesa, settings)
 
 
+# ---------------------------------------------------------
+# Response helpers
+# ---------------------------------------------------------
+
 def _mask_phone(phone: str | None) -> str | None:
     if not phone:
         return None
+
     clean = str(phone).replace("+", "").strip()
+
     if len(clean) >= 6:
         return f"{clean[:3]}****{clean[-3:]}"
+
     return clean
 
 
 def _view(payment: Payment, side: str) -> dict:
-    """Return filtered payment representation according to the actor's side."""
+    """Return filtered payment representation according to actor's side."""
+
     status_str = (
         payment.status.value
         if hasattr(payment.status, "value")
         else str(payment.status)
     )
+
     payout_status_str = (
         payment.payout_status.value
         if hasattr(payment.payout_status, "value")
@@ -85,26 +103,49 @@ def _view(payment: Payment, side: str) -> dict:
     data = {
         "payment_id": str(payment.payment_id),
         "enquiry_id": str(payment.enquiry_id),
-        "amount": float(payment.amount) if payment.amount is not None else 0.0,
+        "amount": (
+            float(payment.amount)
+            if payment.amount is not None
+            else 0.0
+        ),
         "status": status_str,
         "payout_status": payout_status_str,
     }
 
     if side == "buyer":
-        data["phone_number"] = _mask_phone(payment.phone_number)
+        data["phone_number"] = _mask_phone(
+            payment.phone_number
+        )
+
     elif side == "seller":
-        # Seller should never see buyer phone number
+        # Never expose the buyer's phone number to the seller.
         pass
+
     elif side == "admin":
         data["reference_id"] = payment.reference_id
-        data["needs_review"] = getattr(payment, "needs_review", False)
+        data["needs_review"] = getattr(
+            payment,
+            "needs_review",
+            False,
+        )
+        data["review_reason"] = getattr(
+            payment,
+            "review_reason",
+            None,
+        )
         data["phone_number"] = payment.phone_number
+        data["mpesa_receipt_number"] = getattr(
+            payment,
+            "mpesa_receipt_number",
+            None,
+        )
 
     return data
 
 
-# ---------------------------------------------------------------- buyer side
-
+# ---------------------------------------------------------
+# Buyer endpoints
+# ---------------------------------------------------------
 
 @router.post(
     "/enquiries/{enquiry_id}/payments",
@@ -118,6 +159,7 @@ def pay_enquiry(
     svc: PaymentService = Depends(get_service),
 ):
     """Initiate an M-Pesa STK Push for an enquiry."""
+
     response.headers.update(NO_STORE)
 
     payment = svc.initiate_payment(
@@ -137,15 +179,20 @@ def confirm_receipt(
     svc: PaymentService = Depends(get_service),
 ):
     """Buyer confirms receipt of goods."""
+
     response.headers.update(NO_STORE)
 
-    payment = svc.confirm_receipt(user, enquiry_id)
+    payment = svc.confirm_receipt(
+        user,
+        enquiry_id,
+    )
 
     return _view(payment, "buyer")
 
 
-# ------------------------------------------------ seller payout details
-
+# ---------------------------------------------------------
+# Seller payout details
+# ---------------------------------------------------------
 
 @router.get("/payments/payout-details")
 def get_payout_details(
@@ -174,32 +221,67 @@ def set_payout_details(
     )
 
 
-# ----------------------------------------------------- M-Pesa callback
-
+# ---------------------------------------------------------
+# M-Pesa Daraja callback
+# ---------------------------------------------------------
 
 @router.api_route(
     "/payments/mpesa/callback/{kind}/{reference_id}/{token}",
-    methods=["PUT", "POST"],
+    methods=["POST", "PUT"],
     include_in_schema=False,
 )
 def mpesa_callback(
     kind: str,
     reference_id: str,
     token: str,
+    request: Request,
     svc: PaymentService = Depends(get_service),
 ):
-    """Handle a callback after the service validates its signature."""
-    svc.handle_callback(kind, reference_id, token)
+    """
+    Receive the Safaricom Daraja callback.
 
-    return Response(status_code=status.HTTP_200_OK)
+    This endpoint is synchronous. request.json() reads the JSON body
+    without requiring async/await.
+    """
+
+    try:
+        payload = request.json()
+    except Exception:
+        return Response(
+            content="Invalid callback JSON",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not isinstance(payload, dict):
+        return Response(
+            content="Invalid callback payload",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    svc.handle_callback(
+        kind,
+        reference_id,
+        token,
+        payload,
+    )
+
+    # Safaricom should receive a successful HTTP response after
+    # the callback has been processed.
+    return Response(
+        status_code=status.HTTP_200_OK,
+    )
 
 
-# ------------------------------------------------------------------ admin
-
+# ---------------------------------------------------------
+# Admin endpoints
+# ---------------------------------------------------------
 
 @router.get("/admin/payments")
 def admin_list_payments(
-    payment_status: str | None = Query(None, alias="status"),
+    payment_status: str | None = Query(
+        None,
+        alias="status",
+    ),
     payout_status: str | None = None,
     needs_review: bool | None = None,
     limit: int = Query(50, ge=1, le=100),
@@ -216,7 +298,10 @@ def admin_list_payments(
         offset,
     )
 
-    return [_view(payment, "admin") for payment in rows]
+    return [
+        _view(payment, "admin")
+        for payment in rows
+    ]
 
 
 @router.post("/admin/payments/sweep")
@@ -233,7 +318,15 @@ def admin_reconcile(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    payment = svc.admin_reconcile(user, payment_id)
+    payment = svc.admin_reconcile(
+        user,
+        payment_id,
+    )
+
+    if payment is None:
+        return Response(
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
 
     return _view(payment, "admin")
 
@@ -244,7 +337,10 @@ def admin_events(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    return svc.admin_events(user, payment_id)
+    return svc.admin_events(
+        user,
+        payment_id,
+    )
 
 
 @router.post("/admin/payments/{payment_id}/refund")
@@ -254,7 +350,6 @@ def admin_refund(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    """Refund a payment when permitted by the payment service."""
     payment = svc.refund_payment(
         user,
         payment_id,
@@ -270,19 +365,29 @@ def admin_payout(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    payment = svc.initiate_payout(user, payment_id)
+    payment = svc.initiate_payout(
+        user,
+        payment_id,
+    )
 
     return _view(payment, "admin")
 
 
-# ------------------------------------------------------------ shared reads
-
+# ---------------------------------------------------------
+# Shared payment reads
+# ---------------------------------------------------------
 
 @router.get("/payments")
 def my_payments(
     response: Response,
-    side: str | None = Query(None, pattern="^(buyer|seller)$"),
-    payment_status: str | None = Query(None, alias="status"),
+    side: str | None = Query(
+        None,
+        pattern="^(buyer|seller)$",
+    ),
+    payment_status: str | None = Query(
+        None,
+        alias="status",
+    ),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
@@ -294,7 +399,8 @@ def my_payments(
         business = user.business
 
         is_supplier = (
-            business is not None and business.business_role == BusinessRole.SUPPLIER
+            business is not None
+            and business.business_role == BusinessRole.SUPPLIER
         )
 
         side = "seller" if is_supplier else "buyer"
@@ -307,7 +413,10 @@ def my_payments(
         offset,
     )
 
-    return [_view(payment, side) for payment in rows]
+    return [
+        _view(payment, side)
+        for payment in rows
+    ]
 
 
 @router.get("/payments/{payment_id}")
@@ -319,7 +428,10 @@ def get_payment(
 ):
     response.headers.update(NO_STORE)
 
-    payment, side = svc.get_payment_for_actor(user, payment_id)
+    payment, side = svc.get_payment_for_actor(
+        user,
+        payment_id,
+    )
 
     return _view(payment, side)
 
@@ -333,6 +445,9 @@ def enquiry_payments(
 ):
     response.headers.update(NO_STORE)
 
-    payment, side = svc.get_payment_for_enquiry(user, enquiry_id)
+    payment, side = svc.get_payment_for_enquiry(
+        user,
+        enquiry_id,
+    )
 
     return _view(payment, side)

@@ -4,7 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, pool
-
+from models.payment import Payment
 from core.config import normalize_database_url
 from models import Base
 

@@ -106,8 +106,10 @@ def upgrade() -> None:
         sa.Column("rejection_reason", sa.Text(), nullable=True),
         sa.Column("payout_phone", sa.Text(), nullable=True),
         sa.Column(
-            "payout_network", sa.Enum(" MPESA = "MPESA", name="payout_network"), nullable=True
-        ),
+    "payout_network",
+    sa.Enum("MPESA", name="payout_network"),
+    nullable=True,
+),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
@@ -590,7 +592,7 @@ def upgrade() -> None:
         sa.Column("amount", sa.Numeric(precision=19, scale=4), nullable=False),
         sa.Column("payer_phone", sa.Text(), nullable=False),
         sa.Column("reference_id", sa.String(length=100), nullable=False),
-        sa.Column("momo_transaction_id", sa.String(length=100), nullable=True),
+        sa.Column("mpesa_transaction_id", sa.String(length=100), nullable=True),
         sa.Column(
             "status",
             sa.Enum(
