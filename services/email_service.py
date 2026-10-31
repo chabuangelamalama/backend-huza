@@ -1,9 +1,10 @@
 import html
+import json
 import logging
-import smtplib
-import ssl
+import os
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
-from email.message import EmailMessage
 from typing import Protocol
 
 from core.config import Settings
@@ -26,55 +27,53 @@ class EmailSender(Protocol):
     def send(self, message: OutgoingEmail) -> None: ...
 
 
-class SmtpEmailSender:
-    """Sends through any SMTP provider (SendGrid, Mailgun, Brevo, SES, Resend, Gmail...)."""
+class BrevoEmailSender:
+    """Sends transactional email via Brevo REST API over HTTPS (port 443)."""
 
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        username: str | None,
-        password: str | None,
-        starttls: bool,
-        sender: str,
-    ) -> None:
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.starttls = starttls
-        self.sender = sender
+    def __init__(self, api_key: str, sender_email: str, sender_name: str = "HUZA Team") -> None:
+        self.api_key = api_key
+        self.sender_email = sender_email
+        self.sender_name = sender_name
+        self.endpoint = "https://api.brevo.com/v3/smtp/email"
 
     def send_or_raise(self, message: OutgoingEmail) -> None:
-        mime = EmailMessage()
-        mime["From"] = self.sender
-        mime["To"] = message.to
-        mime["Subject"] = message.subject
-        mime.set_content(message.text)
+        payload = {
+            "sender": {
+                "name": self.sender_name,
+                "email": self.sender_email,
+            },
+            "to": [{"email": message.to}],
+            "subject": message.subject,
+            "textContent": message.text,
+        }
         if message.html:
-            mime.add_alternative(message.html, subtype="html")
+            payload["htmlContent"] = message.html
 
-        if self.port == 465:
-            client = smtplib.SMTP_SSL(
-                self.host,
-                self.port,
-                timeout=10,
-                context=ssl.create_default_context(),
-            )
-        else:
-            client = smtplib.SMTP(self.host, self.port, timeout=10)
-        with client as smtp:
-            if self.port != 465 and self.starttls:
-                smtp.starttls(context=ssl.create_default_context())
-            if self.username:
-                smtp.login(self.username, self.password or "")
-            smtp.send_message(mime)
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            self.endpoint,
+            data=data,
+            headers={
+                "accept": "application/json",
+                "api-key": self.api_key,
+                "content-type": "application/json",
+            },
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status not in (200, 201, 202):
+                raise RuntimeError(f"Brevo API error: HTTP {resp.status}")
 
     def send(self, message: OutgoingEmail) -> None:
         try:
             self.send_or_raise(message)
+            logger.info("Successfully sent email %r to %s", message.subject, message.to)
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8", errors="replace")
+            logger.exception("Brevo HTTP error %s: %s", e.code, error_body)
         except Exception:
-            logger.exception("Could not send email %r", message.subject)
+            logger.exception("Could not send email %r to %s", message.subject, message.to)
 
 
 class LoggingEmailSender:
@@ -88,18 +87,19 @@ class LoggingEmailSender:
                 "EMAIL to %s: %s\n%s", message.to, message.subject, logged_item
             )
         else:
-            logger.warning("No SMTP_HOST is set, so %r was not sent.", message.subject)
+            logger.warning("No BREVO_API_KEY is set, so %r was not sent.", message.subject)
 
 
 def build_email_sender(settings: Settings) -> EmailSender:
-    if settings.smtp_host:
-        return SmtpEmailSender(
-            host=settings.smtp_host,
-            port=settings.smtp_port,
-            username=settings.smtp_username,
-            password=settings.smtp_password,
-            starttls=settings.smtp_starttls,
-            sender=settings.email_from,
+    # Read BREVO_API_KEY from environment or settings
+    api_key = getattr(settings, "brevo_api_key", None) or os.getenv("BREVO_API_KEY")
+    sender_email = getattr(settings, "email_from", None) or os.getenv("EMAIL_FROM", "chabuangel@gmail.com")
+
+    if api_key:
+        return BrevoEmailSender(
+            api_key=api_key,
+            sender_email=sender_email,
+            sender_name="HUZA Team",
         )
     return LoggingEmailSender(reveal_links=not settings.is_production)
 
@@ -161,10 +161,9 @@ def build_password_reset_email(
     <h2 style="color: #113225; margin-top: 0; font-size: 22px;">Reset your password</h2>
     <p style="color: #4b5563; font-size: 15px; line-height: 1.5;">Hello {safe_name},</p>
     <p style="color: #4b5563; font-size: 15px; line-height: 1.5;">We received a request to reset your HUZA password. Enter the 6-digit code below in the app:</p>
-    
     <div style="text-align: center; margin: 28px 0;">
       <span style="display: inline-block; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #113225; background-color: #ecfdf5; padding: 14px 28px; border-radius: 8px; border: 1px dashed #059669;">
-        {code}
+{code}
       </span>
     </div>
 
