@@ -76,12 +76,12 @@ def make_business_user(session, **changes) -> User:
     location = Location(
         osm_type=OsmType.NODE,
         osm_id=uuid.uuid4().int % 10**9,
-        name="Remera",
-        display_name="Remera, Gasabo, Kigali City, Rwanda",
-        latitude=Decimal("-1.956000"),
-        longitude=Decimal("30.113000"),
-        district="Gasabo",
-        province="Kigali City",
+        name="Westlands",
+        display_name="Westlands, Nairobi, Nairobi County, Kenya",
+        latitude=Decimal("-1.267500"),
+        longitude=Decimal("36.810800"),
+        sub_county="Westlands",
+        county="Nairobi",
     )
     session.add(location)
     session.flush()
@@ -120,11 +120,6 @@ def auth_header(token):
 
 def token_for(client, user):
     return sign_in(client, user.email).json()["access_token"]
-
-
-# --------------------------------------------------------------------------- #
-# Sign in
-# --------------------------------------------------------------------------- #
 
 
 def test_login_returns_a_token_and_the_user(client, session):

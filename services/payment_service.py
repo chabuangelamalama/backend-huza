@@ -35,10 +35,20 @@ _LAST_POLL: dict[UUID, float] = {}
 
 
 class PaymentError(HTTPException):
-    def __init__(self, status_code: int, code: str, message: str, **extra):
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        **extra,
+    ):
         super().__init__(
             status_code=status_code,
-            detail={"code": code, "message": message, **extra},
+            detail={
+                "code": code,
+                "message": message,
+                **extra,
+            },
         )
 
 
@@ -49,6 +59,7 @@ def _now() -> datetime:
 def _mask(phone: str | None) -> str:
     if not phone or len(phone) < 6:
         return phone or ""
+
     return f"{phone[:3]}****{phone[-3:]}"
 
 
@@ -90,7 +101,12 @@ class PaymentService:
 
         return None
 
-    def _require(self, actor: User, enquiry, allowed: set[str]) -> str:
+    def _require(
+        self,
+        actor: User,
+        enquiry,
+        allowed: set[str],
+    ) -> str:
         side = self._side(actor, enquiry)
 
         if side not in allowed:
@@ -128,7 +144,10 @@ class PaymentService:
                 business_id=business_id,
                 actor_user_id=actor.user_id if actor else None,
                 event_type=event_type,
-                detail={key: str(value) for key, value in detail.items()},
+                detail={
+                    key: str(value)
+                    for key, value in detail.items()
+                },
             )
         )
 
@@ -138,10 +157,13 @@ class PaymentService:
         event: NotificationEvent,
         enquiry_id: UUID,
     ) -> None:
-        for user in repo.business_users(self.db, business_id):
+        for business_user in repo.business_users(
+            self.db,
+            business_id,
+        ):
             self.db.add(
                 Notification(
-                    user_id=user.user_id,
+                    user_id=business_user.user_id,
                     event_type=event,
                     enquiry_id=enquiry_id,
                 )
@@ -171,11 +193,51 @@ class PaymentService:
         enquiry_id: UUID,
         phone_number: str,
     ) -> Payment:
-        enquiry = repo.get_enquiry(self.db, enquiry_id)
-        self._require(actor, enquiry, {"buyer"})
+        enquiry = repo.get_enquiry(
+            self.db,
+            enquiry_id,
+        )
+
+        # TEMPORARY DEBUGGING
+        print(
+            "DEBUG enquiry found:",
+            enquiry is not None,
+        )
+        print(
+            "DEBUG actor user_id:",
+            actor.user_id,
+        )
+        print(
+            "DEBUG actor business_id:",
+            actor.business_id,
+        )
+
+        if enquiry is not None:
+            print(
+                "DEBUG buyer business_id:",
+                enquiry.buyer_business_id,
+            )
+            print(
+                "DEBUG seller business_id:",
+                enquiry.seller_business_id,
+            )
+
+        print(
+            "DEBUG side:",
+            self._side(actor, enquiry),
+        )
+
+        self._require(
+            actor,
+            enquiry,
+            {"buyer"},
+        )
 
         # Reconcile existing pending attempts before allowing another one.
-        for old_payment in repo.pending_for_enquiry(self.db, enquiry_id):
+        for old_payment in repo.pending_for_enquiry(
+            self.db,
+            enquiry_id,
+        ):
             self.reconcile_payment(old_payment.payment_id)
 
         enquiry = repo.get_enquiry(
@@ -185,7 +247,9 @@ class PaymentService:
         )
 
         try:
-            normalized_phone = normalize_msisdn(phone_number)
+            normalized_phone = normalize_msisdn(
+                phone_number
+            )
 
             self._check_can_pay(
                 actor,
@@ -216,6 +280,7 @@ class PaymentService:
 
         except IntegrityError:
             self.db.rollback()
+
             raise PaymentError(
                 409,
                 "payment_in_progress",
@@ -233,9 +298,14 @@ class PaymentService:
             _mask(normalized_phone),
         )
 
-        self._send_request_to_pay(payment.payment_id)
+        self._send_request_to_pay(
+            payment.payment_id,
+        )
 
-        return repo.get_payment(self.db, payment.payment_id)
+        return repo.get_payment(
+            self.db,
+            payment.payment_id,
+        )
 
     def _registered_phones(
         self,
@@ -252,7 +322,9 @@ class PaymentService:
                 continue
 
             try:
-                registered.add(normalize_msisdn(raw_phone))
+                registered.add(
+                    normalize_msisdn(raw_phone)
+                )
             except ValueError:
                 continue
 
@@ -327,10 +399,15 @@ class PaymentService:
                 "or update your profile",
             )
 
-        amount: Decimal = Decimal(str(enquiry.total_amount))
+        amount: Decimal = Decimal(
+            str(enquiry.total_amount)
+        )
 
         # Daraja STK Push uses whole KES amounts.
-        if amount <= 0 or amount != amount.to_integral_value():
+        if (
+            amount <= 0
+            or amount != amount.to_integral_value()
+        ):
             raise PaymentError(
                 409,
                 "invalid_amount",
@@ -369,7 +446,10 @@ class PaymentService:
     # Safaricom STK Push
     # ------------------------------------------------------------------
 
-    def _send_request_to_pay(self, payment_id: UUID) -> None:
+    def _send_request_to_pay(
+        self,
+        payment_id: UUID,
+    ) -> None:
         """
         Send an STK Push request once.
 
@@ -388,7 +468,11 @@ class PaymentService:
             return
 
         # Never dispatch another STK Push if one has already been submitted.
-        if getattr(payment, "mpesa_checkout_request_id", None):
+        if getattr(
+            payment,
+            "mpesa_checkout_request_id",
+            None,
+        ):
             return
 
         enquiry = repo.get_enquiry(
@@ -437,7 +521,9 @@ class PaymentService:
 
         except MpesaRejected as exc:
             payment.status = PaymentStatus.FAILED
-            payment.failure_reason = safe_reason(exc.reason)
+            payment.failure_reason = safe_reason(
+                exc.reason
+            )
 
             self._event(
                 "PAYMENT_GATEWAY_REJECTED",
@@ -468,7 +554,10 @@ class PaymentService:
     # Reconciliation
     # ------------------------------------------------------------------
 
-    def reconcile_payment(self, payment_id: UUID) -> Payment | None:
+    def reconcile_payment(
+        self,
+        payment_id: UUID,
+    ) -> Payment | None:
         """
         Query the existing STK Push request.
 
@@ -504,7 +593,10 @@ class PaymentService:
         now = time.monotonic()
 
         with _POLL_LOCK:
-            last_poll = _LAST_POLL.get(payment_id, 0)
+            last_poll = _LAST_POLL.get(
+                payment_id,
+                0,
+            )
 
             if (
                 now - last_poll
@@ -531,7 +623,10 @@ class PaymentService:
                 self._event(
                     "PAYMENT_FAILED",
                     payment_id=payment.payment_id,
-                    reason=result.reason or "Safaricom reported failure",
+                    reason=(
+                        result.reason
+                        or "Safaricom reported failure"
+                    ),
                 )
 
                 self.db.commit()
@@ -613,10 +708,15 @@ class PaymentService:
                 "Unsupported M-Pesa callback type",
             )
 
-        callback_secret = self.s.callback_secret.get_secret_value()
+        callback_secret = (
+            self.s.callback_secret.get_secret_value()
+        )
 
         if not callback_secret:
-            log.error("M-Pesa callback secret is not configured")
+            log.error(
+                "M-Pesa callback secret is not configured"
+            )
+
             raise PaymentError(
                 500,
                 "callback_configuration_error",
@@ -633,6 +733,7 @@ class PaymentService:
                 "Invalid M-Pesa callback token reference_id=%s",
                 reference_id,
             )
+
             raise PaymentError(
                 403,
                 "invalid_callback_token",
@@ -641,7 +742,9 @@ class PaymentService:
 
         payment = (
             self.db.query(Payment)
-            .filter(Payment.reference_id == reference_id)
+            .filter(
+                Payment.reference_id == reference_id
+            )
             .with_for_update()
             .first()
         )
@@ -670,9 +773,14 @@ class PaymentService:
         )
 
         result_code = callback.get("ResultCode")
-        result_description = callback.get("ResultDesc") or ""
+        result_description = (
+            callback.get("ResultDesc") or ""
+        )
 
-        if checkout_request_id is None or result_code is None:
+        if (
+            checkout_request_id is None
+            or result_code is None
+        ):
             raise PaymentError(
                 400,
                 "invalid_callback",
@@ -699,7 +807,10 @@ class PaymentService:
             )
             stored_checkout_id = str(checkout_request_id)
 
-        if str(stored_checkout_id) != str(checkout_request_id):
+        if (
+            str(stored_checkout_id)
+            != str(checkout_request_id)
+        ):
             self._flag_review(
                 payment,
                 "Callback CheckoutRequestID does not match payment",
@@ -743,7 +854,8 @@ class PaymentService:
         if result_code_int != 0:
             payment.status = PaymentStatus.FAILED
             payment.failure_reason = safe_reason(
-                result_description or "M-Pesa transaction failed"
+                result_description
+                or "M-Pesa transaction failed"
             )
 
             self._event(
@@ -758,7 +870,9 @@ class PaymentService:
 
         metadata = self._callback_metadata(callback)
 
-        receipt = metadata.get("MpesaReceiptNumber")
+        receipt = metadata.get(
+            "MpesaReceiptNumber"
+        )
         callback_amount = metadata.get("Amount")
         callback_phone = metadata.get("PhoneNumber")
 
@@ -772,8 +886,12 @@ class PaymentService:
 
         # Validate callback amount against the amount stored locally.
         try:
-            received_amount = Decimal(str(callback_amount))
-            expected_amount = Decimal(str(payment.amount))
+            received_amount = Decimal(
+                str(callback_amount)
+            )
+            expected_amount = Decimal(
+                str(payment.amount)
+            )
         except Exception:
             self._flag_review(
                 payment,
@@ -807,7 +925,10 @@ class PaymentService:
                 self.db.commit()
                 return
 
-            if normalized_callback_phone != normalized_payment_phone:
+            if (
+                normalized_callback_phone
+                != normalized_payment_phone
+            ):
                 self._flag_review(
                     payment,
                     "Callback phone number does not match the payer",
@@ -876,7 +997,10 @@ class PaymentService:
     # Seller payout details
     # ------------------------------------------------------------------
 
-    def get_payout_details(self, actor: User) -> dict:
+    def get_payout_details(
+        self,
+        actor: User,
+    ) -> dict:
         if actor.business_id is None:
             raise PaymentError(404, *_NOT_FOUND)
 
@@ -893,7 +1017,9 @@ class PaymentService:
             )
 
         return {
-            "payout_phone": _mask(business.payout_phone),
+            "payout_phone": _mask(
+                business.payout_phone
+            ),
             "payout_network": getattr(
                 business,
                 "payout_network",
@@ -922,7 +1048,9 @@ class PaymentService:
                 "Business not found",
             )
 
-        normalized = normalize_msisdn(payout_phone)
+        normalized = normalize_msisdn(
+            payout_phone
+        )
 
         business.payout_phone = normalized
 
@@ -1034,7 +1162,11 @@ class PaymentService:
             enquiry_id,
         )
 
-        self._require(actor, enquiry, {"buyer"})
+        self._require(
+            actor,
+            enquiry,
+            {"buyer"},
+        )
 
         payment = repo.get_payment_by_enquiry_id(
             self.db,
@@ -1083,13 +1215,20 @@ class PaymentService:
             offset=offset,
         )
 
-    def sweep(self, actor: User) -> dict:
+    def sweep(
+        self,
+        actor: User,
+    ) -> dict:
         self._require_admin(actor)
 
         count = 0
 
-        for payment in repo.list_pending_payments(self.db):
-            self.reconcile_payment(payment.payment_id)
+        for payment in repo.list_pending_payments(
+            self.db
+        ):
+            self.reconcile_payment(
+                payment.payment_id
+            )
             count += 1
 
         return {"checked": count}
@@ -1100,7 +1239,10 @@ class PaymentService:
         payment_id: UUID,
     ) -> Payment | None:
         self._require_admin(actor)
-        return self.reconcile_payment(payment_id)
+
+        return self.reconcile_payment(
+            payment_id
+        )
 
     def admin_events(
         self,

@@ -22,7 +22,7 @@ class Location(CreatedAtMixin, Base):
     display_name = Column(Text, nullable=False)
     latitude = Column(Numeric(9, 6), nullable=False)
     longitude = Column(Numeric(9, 6), nullable=False)
-    district = Column(String(100), nullable=False)
-    province = Column(String(100), nullable=False)
+    sub_county = Column(String(100), nullable=False)
+    county = Column(String(100), nullable=False)
 
     __table_args__ = (UniqueConstraint("osm_type", "osm_id", name="uq_locations_osm"),)

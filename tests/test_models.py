@@ -28,7 +28,7 @@ from models.location import OsmType
 from models.notification import NotificationEvent
 from models.user import UserRole
 
-# Dynamic fallback import for testing values
+
 try:
     from tests.test_payments_api import PAYER
 except ImportError:
