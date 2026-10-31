@@ -10,9 +10,10 @@ from core.security import ACCESS, TokenError, decode_token
 from models.user import User, UserRole
 from repositories.user_repository import UserRepository
 from services.auth_service import AuthService
-from services.email_service import EmailSender, LoggingEmailSender, SmtpEmailSender
+from services.email_service import EmailSender, build_email_sender
 from services.registration_service import RegistrationService
 from services.user_service import UserService
+
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
@@ -42,16 +43,7 @@ def get_user_service(
 
 
 def get_mailer(settings: Settings = Depends(get_settings)) -> EmailSender:
-    if settings.smtp_host:
-        return SmtpEmailSender(
-            host=settings.smtp_host,
-            port=settings.smtp_port,
-            username=settings.smtp_username,
-            password=settings.smtp_password,
-            starttls=settings.smtp_starttls,
-            sender=settings.email_from,
-        )
-    return LoggingEmailSender(reveal_links=not settings.is_production)
+    return build_email_sender(settings)
 
 
 # --------------------------------------------------------------------------- #
