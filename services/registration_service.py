@@ -58,7 +58,7 @@ class RegistrationService:
     # Register
     # ------------------------------------------------------------------ #
 
-    def register(self, data: RegisterRequest) -> tuple[User, OutgoingEmail]:
+    def register(self, data: RegisterRequest) -> tuple[User, OutgoingEmail | None]:
         """Creates the location, the PENDING business and the user in one go."""
         email = normalize_email(data.email)
         if self.users.get_by_email(email) is not None:
@@ -66,6 +66,8 @@ class RegistrationService:
 
         location = self._location_for(data.location)
         details = data.business
+        auto_approve = self.settings.auto_approve_businesses
+        auto_verify = self.settings.auto_verify_email
         business = Business(
             business_legal_name=details.business_legal_name,
             display_name=details.display_name,
@@ -77,6 +79,10 @@ class RegistrationService:
             contact_phone=details.contact_phone or data.phone,
             contact_email=email,
             registration_number=details.registration_number,
+            approval_status=(
+                ApprovalStatus.APPROVED if auto_approve else ApprovalStatus.PENDING
+            ),
+            approved_at=_now() if auto_approve else None,
         )
         self.users.add(business)
         self.users.flush()
@@ -92,12 +98,18 @@ class RegistrationService:
             business_id=business.business_id,
         )
         self._store_code(user, code)
+        if auto_verify:
+            user.email_verified_at = _now()
+            user.verify_code_hash = None
+            user.verify_code_expires_at = None
         self.users.add(user)
         try:
             self.users.commit()
         except IntegrityError:
             self.users.rollback()
             raise EmailTaken() from None
+        if auto_verify:
+            return user, None
         return user, build_verification_code_email(user, code, self.settings)
 
     # ------------------------------------------------------------------ #

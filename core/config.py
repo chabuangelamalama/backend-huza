@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     reset_token_minutes: int = Field(default=60, gt=0)
     verify_token_minutes: int = Field(default=1440, gt=0)
     verify_code_minutes: int = Field(default=30, gt=0)
+
+    # Opt-in switches: set to true to approve / verify new registrations
+    # automatically (handy for demos). Off by default.
+    auto_approve_businesses: bool = False
+    auto_verify_email: bool = False
     max_failed_logins: int = Field(default=5, gt=0)
     lockout_minutes: int = Field(default=15, gt=0)
 

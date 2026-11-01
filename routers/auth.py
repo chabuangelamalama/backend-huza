@@ -147,7 +147,8 @@ def register(
 ):
     """Create an account with its business (PENDING approval) and sign it in."""
     user, message = registration.register(body)
-    background.add_task(mailer.send, message)
+    if message is not None:
+        background.add_task(mailer.send, message)
     token, expires_in = service.issue_token(user)
     return {
         "access_token": token,
