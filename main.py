@@ -7,12 +7,8 @@ from fastapi.responses import JSONResponse
 from core.config import get_settings
 from core.exceptions import AppError
 from database import check_database, engine
-<<<<<<< HEAD
-from routers import admin, auth, notification, price_guide
-from routers.enquiries import router as enquiries_router
-=======
 from routers import admin, auth, business, notification, price_guide
->>>>>>> develop
+from routers.enquiries import router as enquiries_router
 from routers.listing import router as listing_router
 
 settings = get_settings()
@@ -50,6 +46,8 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
 
 
 app.include_router(enquiries_router)
+# Backwards-compatible alias for the original versioned enquiry path.
+app.include_router(enquiries_router, prefix="/api/v1", include_in_schema=False)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(business.router)

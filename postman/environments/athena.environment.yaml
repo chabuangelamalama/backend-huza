@@ -1,0 +1,13 @@
+name: athena
+values:
+  - key: base_url
+    value: 'http://127.0.0.1:8000'
+  - key: email
+    value: test@huza.rw
+  - key: password
+    value: Correct1horse
+  - key: access_token
+    value: ''
+  - key: enquiry_id
+    value: ''
+color: 300

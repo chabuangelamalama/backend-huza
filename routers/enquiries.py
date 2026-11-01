@@ -1,40 +1,43 @@
 import uuid
-from typing import List
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from core.dependencies import get_current_user
+from core.security import CurrentUser, get_current_user
 from database import get_db
-from models.user import User
-from repositories.enquiry import enquiry_repository
-from schemas.enquiry import EnquiryCreate, EnquiryRead
+from schemas.enquiry import EnquiryCreate, EnquiryFilter, EnquiryRead
 from services.enquiry import enquiry_service
 
-router = APIRouter(prefix="/api/v1/enquiries", tags=["Enquiries"])
+router = APIRouter(prefix="/enquiries", tags=["enquiries"])
 
 
-@router.post("/", response_model=EnquiryRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=EnquiryRead, status_code=status.HTTP_201_CREATED)
 def create_enquiry(
     payload: EnquiryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    return enquiry_service.create_enquiry(db, payload)
+    return enquiry_service.create_enquiry(db, payload, current_user)
 
 
-@router.get("/", response_model=List[EnquiryRead])
+@router.get("", response_model=list[EnquiryRead])
 def list_enquiries(
+    filters: Annotated[EnquiryFilter, Query()],
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    return enquiry_repository.get_all(db)
+    return enquiry_service.list_enquiries(
+        db,
+        current_user,
+        **filters.model_dump(),
+    )
 
 
 @router.get("/{enquiry_id}", response_model=EnquiryRead)
 def get_enquiry(
     enquiry_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    return enquiry_service.get_enquiry(db, enquiry_id)
+    return enquiry_service.get_enquiry(db, enquiry_id, current_user)

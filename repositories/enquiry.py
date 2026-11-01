@@ -1,10 +1,19 @@
 import uuid
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from models.enquiry import Enquiry
+from models.business import Business
+from models.enquiry import Enquiry, EnquiryStatus
+from models.listing import Listing
+from models.user import User
+
+OPEN_STATUSES = (
+    EnquiryStatus.ENQUIRY,
+    EnquiryStatus.AGREED,
+    EnquiryStatus.PAID,
+)
 
 
 class EnquiryRepository:
@@ -16,10 +25,60 @@ class EnquiryRepository:
         """Retrieves a single enquiry by its primary tracking ID."""
         return db.get(self.model, enquiry_id)
 
+    def get_user(self, db: Session, user_id: uuid.UUID) -> Optional[User]:
+        return db.get(User, user_id)
+
+    def get_business(self, db: Session, business_id: uuid.UUID) -> Optional[Business]:
+        return db.get(Business, business_id)
+
+    def get_listing(self, db: Session, listing_id: uuid.UUID) -> Optional[Listing]:
+        return db.get(Listing, listing_id)
+
+    def search(
+        self,
+        db: Session,
+        *,
+        business_id: Optional[uuid.UUID] = None,
+        status: Optional[EnquiryStatus] = None,
+        listing_id: Optional[uuid.UUID] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ):
+        query = select(self.model)
+        if business_id is not None:
+            query = query.where(
+                or_(
+                    self.model.buyer_business_id == business_id,
+                    self.model.seller_business_id == business_id,
+                )
+            )
+        if status is not None:
+            query = query.where(self.model.status == status)
+        if listing_id is not None:
+            query = query.where(self.model.listing_id == listing_id)
+        query = (
+            query.order_by(self.model.created_at.desc(), self.model.enquiry_id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(db.scalars(query))
+
     def get_all(self, db: Session, skip: int = 0, limit: int = 100):
         """Lists all enquiries globally with standard pagination support."""
-        statement = select(self.model).offset(skip).limit(limit)
-        return db.scalars(statement).all()
+        return self.search(db, limit=limit, offset=skip)
+
+    def find_open(
+        self,
+        db: Session,
+        listing_id: uuid.UUID,
+        buyer_business_id: uuid.UUID,
+    ) -> Optional[Enquiry]:
+        query = select(self.model).where(
+            self.model.listing_id == listing_id,
+            self.model.buyer_business_id == buyer_business_id,
+            self.model.status.in_(OPEN_STATUSES),
+        )
+        return db.scalars(query).first()
 
     def create(self, db: Session, data: Dict[str, Any], commit: bool = True) -> Enquiry:
         """Persists a brand new enquiry payload directly into the database row engine."""

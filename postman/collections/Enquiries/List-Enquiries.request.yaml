@@ -1,0 +1,37 @@
+$kind: http-request
+name: List Enquiries
+order: 3000
+method: GET
+url: '{{base_url}}/enquiries'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status is 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Response is an array", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.be.an("array");
+      });
+
+      pm.test("List is non-empty after create", function () {
+          const json = pm.response.json();
+          pm.expect(json.length).to.be.above(0);
+      });
+
+      pm.test("Each enquiry has all required fields", function () {
+          const json = pm.response.json();
+          json.forEach(function (item) {
+              pm.expect(item).to.have.property("enquiry_id");
+              pm.expect(item).to.have.property("listing_id");
+              pm.expect(item).to.have.property("buyer_business_id");
+              pm.expect(item).to.have.property("seller_business_id");
+              pm.expect(item).to.have.property("status");
+              pm.expect(item).to.have.property("quantity");
+              pm.expect(item).to.have.property("unit");
+              pm.expect(item).to.have.property("unit_price");
+              pm.expect(item).to.have.property("total_amount");
+          });
+      });
