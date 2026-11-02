@@ -1,0 +1,25 @@
+
+"""FastAPI dependencies used by the payment router."""
+
+from functools import lru_cache
+
+from core.dependencies import get_current_user
+from core.payment_config import MpesaSettings, get_mpesa_settings
+from database import get_db
+from sqlalchemy.orm import Session
+
+from services.mpesa import MpesaClient, MpesaGateway
+
+
+@lru_cache
+def _mpesa_client() -> MpesaGateway:
+    settings = get_mpesa_settings()
+    return MpesaClient(settings)
+
+
+def get_mpesa_client() -> MpesaGateway:
+    return _mpesa_client()
+
+
+def get_settings() -> MpesaSettings:
+    return get_mpesa_settings()

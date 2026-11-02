@@ -5,6 +5,7 @@ from .listing import Listing
 from .location import Location
 from .notification import Notification
 from .payment import Payment
+from .payment_event import PaymentEvent
 from .price_guide import PriceGuide
 from .user import User
 
@@ -16,6 +17,7 @@ __all__ = [
     "Location",
     "Notification",
     "Payment",
+    "PaymentEvent",
     "PriceGuide",
     "User",
 ]

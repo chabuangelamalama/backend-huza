@@ -51,30 +51,43 @@ def get_mailer(settings: Settings = Depends(get_settings)) -> EmailSender:
 # --------------------------------------------------------------------------- #
 
 
+
 def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     users: UserRepository = Depends(get_user_repository),
     settings: Settings = Depends(get_settings),
 ) -> User:
-    # Missing token, or called directly without FastAPI resolving dependencies.
-    if (
-        not token
-        or isinstance(token, DependsClass)
-        or isinstance(settings, DependsClass)
-    ):
+    print("AUTH DEBUG - FUNCTION CALLED")
+    print("AUTH DEBUG - TOKEN PRESENT:", bool(token))
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
     try:
         claims = decode_token(token, ACCESS, settings)
-    except TokenError:
+    except TokenError as exc:
+        print("AUTH DEBUG - TOKEN DECODE FAILED:", str(exc))
         raise InvalidToken("Invalid or expired token.") from None
 
+    print("AUTH DEBUG - TOKEN USER ID:", claims.user_id)
+    print("AUTH DEBUG - TOKEN VERSION:", claims.token_version)
+
     user = users.get_by_id(claims.user_id)
+
+    print("AUTH DEBUG - DATABASE USER FOUND:", user is not None)
+
+    if user is not None:
+        print("AUTH DEBUG - DATABASE USER ID:", user.user_id)
+        print("AUTH DEBUG - DATABASE TOKEN VERSION:", user.token_version)
+
     if user is None or user.token_version != claims.token_version:
+        print("AUTH DEBUG - USER OR TOKEN VERSION MISMATCH")
         raise InvalidToken("Invalid or expired token.")
+
+    print("AUTH DEBUG - AUTHENTICATED:", user.email)
     return user
 
 
