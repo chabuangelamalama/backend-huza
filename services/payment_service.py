@@ -233,7 +233,6 @@ class PaymentService:
             {"buyer"},
         )
 
-        # Reconcile existing pending attempts before allowing another one.
         for old_payment in repo.pending_for_enquiry(
             self.db,
             enquiry_id,
@@ -275,7 +274,7 @@ class PaymentService:
                 amount=enquiry.total_amount,
             )
 
-            # Commit before making the external Safaricom request.
+         
             self.db.commit()
 
         except IntegrityError:
@@ -403,7 +402,6 @@ class PaymentService:
             str(enquiry.total_amount)
         )
 
-        # Daraja STK Push uses whole KES amounts.
         if (
             amount <= 0
             or amount != amount.to_integral_value()
@@ -467,7 +465,7 @@ class PaymentService:
         if payment.status != PaymentStatus.PENDING:
             return
 
-        # Never dispatch another STK Push if one has already been submitted.
+
         if getattr(
             payment,
             "mpesa_checkout_request_id",
@@ -534,8 +532,7 @@ class PaymentService:
             self.db.commit()
 
         except MpesaTransient as exc:
-            # A timeout can happen after Safaricom accepted the request.
-            # Do not automatically send another STK Push.
+
             log.warning(
                 "Ambiguous STK Push result payment_id=%s error=%s",
                 payment_id,
@@ -585,11 +582,10 @@ class PaymentService:
         )
 
         if not checkout_id:
-            # No CheckoutRequestID means we cannot safely query.
-            # In particular, do not resend the STK Push here.
+            
             return payment
 
-        # Avoid excessive repeated polling in one application process.
+
         now = time.monotonic()
 
         with _POLL_LOCK:
@@ -632,8 +628,7 @@ class PaymentService:
                 self.db.commit()
 
             elif result.status == "SUCCESSFUL":
-                # A query result is not a receipt number.
-                # Wait for the callback to supply receipt metadata.
+                
                 if not payment.needs_review:
                     self._flag_review(
                         payment,
@@ -787,14 +782,13 @@ class PaymentService:
                 "Callback is missing required transaction fields",
             )
 
-        # Store the merchant request ID when supplied.
+
         if merchant_request_id:
             payment.mpesa_merchant_request_id = str(
                 merchant_request_id
             )
 
-        # Daraja can deliver a callback before the STK request's
-        # CheckoutRequestID has been committed by the initiating request.
+
         stored_checkout_id = getattr(
             payment,
             "mpesa_checkout_request_id",
@@ -823,7 +817,7 @@ class PaymentService:
                 "Callback does not match this payment",
             )
 
-        # Duplicate callback: acknowledge without repeating side effects.
+
         if payment.status == PaymentStatus.SUCCESSFUL:
             self.db.commit()
             return
@@ -850,7 +844,7 @@ class PaymentService:
             self.db.commit()
             return
 
-        # Non-zero ResultCode means the STK transaction did not succeed.
+
         if result_code_int != 0:
             payment.status = PaymentStatus.FAILED
             payment.failure_reason = safe_reason(
@@ -884,7 +878,7 @@ class PaymentService:
             self.db.commit()
             return
 
-        # Validate callback amount against the amount stored locally.
+
         try:
             received_amount = Decimal(
                 str(callback_amount)
@@ -908,7 +902,7 @@ class PaymentService:
             self.db.commit()
             return
 
-        # Validate the payer phone number where Safaricom supplied it.
+
         if callback_phone is not None:
             try:
                 normalized_callback_phone = normalize_msisdn(
@@ -936,7 +930,7 @@ class PaymentService:
                 self.db.commit()
                 return
 
-        # Only an actual M-Pesa receipt is stored in this field.
+
         payment.mpesa_receipt_number = str(receipt)
         payment.status = PaymentStatus.SUCCESSFUL
         payment.paid_at = _now()
@@ -1284,8 +1278,6 @@ class PaymentService:
         if not payment:
             raise PaymentError(404, *_NOT_FOUND)
 
-        # Do not mark a payment refunded unless a real reversal
-        # request has been implemented and confirmed by Safaricom.
         raise PaymentError(
             501,
             "refund_not_implemented",
@@ -1308,11 +1300,56 @@ class PaymentService:
         if not payment:
             raise PaymentError(404, *_NOT_FOUND)
 
-        # Do not mark a payout as processing until a real B2C
-        # transfer implementation is available.
-        raise PaymentError(
-            501,
-            "payout_not_implemented",
-            "M-Pesa B2C payout has not been implemented. "
-            "No money has been transferred.",
-        )
+        if payment.status != PaymentStatus.SUCCESSFUL:
+            raise PaymentError(
+                409,
+                "payment_not_successful",
+                "Cannot initiate payout for a payment that is not successful",
+            )
+
+        if payment.payout_status == PayoutStatus.PAID:
+            raise PaymentError(
+                409,
+                "payout_already_completed",
+                "This payment has already been paid out to the seller",
+            )
+
+        enquiry = repo.get_enquiry(self.db, payment.enquiry_id)
+        if not enquiry:
+            raise PaymentError(404, *_NOT_FOUND)
+
+        seller = repo.get_business(self.db, enquiry.seller_business_id)
+        if not seller or not seller.payout_phone:
+            raise PaymentError(
+                409,
+                "seller_payout_not_configured",
+                "The seller has not set up payout details yet",
+            )
+
+        payout_amount = payment.payout_amount
+        if payout_amount is None:
+            payout_amount = payment.amount - (payment.fee_amount or Decimal("0.00"))
+
+        amount = Decimal(str(payout_amount))
+
+        try:
+            conversation_id = self.mpesa.transfer(
+                reference_id=str(payment.payment_id),
+                amount=amount,
+                phone_number=seller.payout_phone,
+                remarks=f"Payout {str(payment.payment_id)[:8]}",
+            )
+
+            payment.payout_reference = conversation_id
+            payment.payout_status = PayoutStatus.PENDING
+            self.db.commit()
+            return payment
+
+        except MpesaRejected as e:
+            payment.payout_status = PayoutStatus.FAILED
+            payment.payout_failure_reason = str(e.reason or e)[:100]
+            self.db.commit()
+            raise PaymentError(400, "payout_rejected", str(e.reason or e))
+        except MpesaTransient as e:
+            self.db.rollback()
+            raise PaymentError(503, "mpesa_unavailable", "Safaricom service unavailable")

@@ -6,31 +6,35 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from models.business import PayoutNetwork
-from models.enquiry import FailureReason
 from models.payment import Payment, PaymentStatus, PayoutStatus, RefundStatus
 
-
-_MSISDN_RE = re.compile(r"^254\d{9}$")
+_MSISDN_RE = re.compile(r"^254[17]\d{8}$")
 
 
 def normalize_msisdn(raw: str) -> str:
-    """'+254 712 345 678' / '0712345678' / '254712345678' -> '254712345678'."""
-    digits = re.sub(r"[\s\-().]", "", raw.strip())
-    if digits.startswith("+"):
-        digits = digits[1:]
-    if digits.startswith("0"):
+    """
+    Normalizes Kenyan phone numbers to the 12-digit Daraja MSISDN format:
+    '+254 712 345 678' / '0712345678' / '712345678' / '0110123456' -> '254712345678'
+    """
+    digits = re.sub(r"[\s\-().+]", "", raw.strip())
+
+    if digits.startswith("0") and len(digits) == 10:
         digits = "254" + digits[1:]
-    elif digits.startswith("7") and len(digits) == 9:
+    elif digits.startswith(("7", "1")) and len(digits) == 9:
         digits = "254" + digits
+
     if not _MSISDN_RE.match(digits):
-        raise ValueError("Enter a valid Safaricom M-Pesa number, e.g. 0712345678")
+        raise ValueError(
+            "Enter a valid Safaricom phone number (e.g. 0712345678 or 0110123456)"
+        )
     return digits
 
 
 def mask_phone(phone: str | None) -> str | None:
     if not phone:
         return None
-    return f"{phone[:3]}****{phone[-3:]}" if len(phone) >= 8 else "****"
+   
+    return f"{phone[:5]}****{phone[-3:]}" if len(phone) >= 9 else "****"
 
 
 FAILURE_MESSAGES = {
@@ -44,19 +48,25 @@ FAILURE_MESSAGES = {
     "SERVICE_UNAVAILABLE": "M-Pesa API is unavailable. Please try again shortly.",
 }
 DEFAULT_FAILURE_MESSAGE = "The payment could not be completed. Please try again."
+
 KNOWN_REASONS = set(FAILURE_MESSAGES) | {
     "PAYEE_NOT_FOUND",
     "NOT_ALLOWED",
     "INVALID_CURRENCY",
     "INTERNAL_PROCESSING_ERROR",
     "RESOURCE_NOT_FOUND",
+    "UNKNOWN",
 }
 
 
-def safe_reason(raw: str | None) -> str:
-    """Only store known M-Pesa codes; never persist arbitrary text from outside."""
+def safe_reason(raw: str | None) -> str | None:
+    """Only store known M-Pesa codes; preserves None for clean/settled payments."""
+    if not raw:
+        return None
     return raw if raw in KNOWN_REASONS else "UNKNOWN"
 
+
+# ---- Requests ----------------------------------------------------------------
 
 class InitiatePaymentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -70,7 +80,7 @@ class InitiatePaymentRequest(BaseModel):
 
 class RefundRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    failure_reason: FailureReason | None = None
+    failure_reason: str | None = None
 
 
 class PayoutDetailsRequest(BaseModel):
@@ -84,13 +94,17 @@ class PayoutDetailsRequest(BaseModel):
         return normalize_msisdn(v)
 
 
-# ---- responses ---------------------------------------------------------------
+# ---- Responses ---------------------------------------------------------------
+
 class PaymentBuyerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     payment_id: UUID
     enquiry_id: UUID
     amount: Decimal
     status: PaymentStatus
     phone_number: str | None
+    mpesa_receipt_number: str | None = None
     failure_message: str | None
     refund_status: RefundStatus
     paid_at: datetime | None
@@ -98,10 +112,13 @@ class PaymentBuyerOut(BaseModel):
 
 
 class PaymentSellerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     payment_id: UUID
     enquiry_id: UUID
     amount: Decimal
     status: PaymentStatus
+    mpesa_receipt_number: str | None = None
     payout_status: PayoutStatus
     fee_amount: Decimal
     payout_amount: Decimal | None
@@ -113,7 +130,6 @@ class PaymentSellerOut(BaseModel):
 
 class PaymentAdminOut(PaymentBuyerOut):
     reference_id: str
-    mpesa_receipt_number: str | None
     failure_reason: str | None
     payout_status: PayoutStatus
     payout_reference: str | None
@@ -130,6 +146,7 @@ class PaymentAdminOut(PaymentBuyerOut):
 
 class PaymentEventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
     event_id: UUID
     payment_id: UUID | None
     business_id: UUID | None
@@ -140,9 +157,13 @@ class PaymentEventOut(BaseModel):
 
 
 class PayoutDetailsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     payout_phone: str | None
     payout_network: PayoutNetwork | None
 
+
+# ---- View Helpers ------------------------------------------------------------
 
 def buyer_view(p: Payment) -> PaymentBuyerOut:
     msg = None
@@ -154,6 +175,7 @@ def buyer_view(p: Payment) -> PaymentBuyerOut:
         amount=p.amount,
         status=p.status,
         phone_number=mask_phone(p.phone_number),
+        mpesa_receipt_number=p.mpesa_receipt_number,
         failure_message=msg,
         refund_status=p.refund_status,
         paid_at=p.paid_at,
@@ -167,6 +189,7 @@ def seller_view(p: Payment) -> PaymentSellerOut:
         enquiry_id=p.enquiry_id,
         amount=p.amount,
         status=p.status,
+        mpesa_receipt_number=p.mpesa_receipt_number,
         payout_status=p.payout_status,
         fee_amount=p.fee_amount,
         payout_amount=p.payout_amount,
@@ -179,6 +202,9 @@ def seller_view(p: Payment) -> PaymentSellerOut:
 
 def admin_view(p: Payment) -> PaymentAdminOut:
     base = buyer_view(p).model_dump()
+   
+    base["phone_number"] = p.phone_number
+
     return PaymentAdminOut(
         **base,
         reference_id=p.reference_id,

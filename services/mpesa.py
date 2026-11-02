@@ -1,3 +1,5 @@
+"""Safaricom Daraja API client (OAuth, STK Push, Callback Verification, B2C)."""
+
 import base64
 import hashlib
 import hmac
@@ -5,6 +7,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal, Protocol
 
@@ -15,6 +18,7 @@ from core.payment_config import MpesaSettings
 log = logging.getLogger("huza.mpesa")
 
 Product = Literal["collection", "disbursement"]
+EAT_TIMEZONE = timezone(timedelta(hours=3))
 
 
 class MpesaError(Exception):
@@ -22,7 +26,7 @@ class MpesaError(Exception):
 
 
 class MpesaRejected(MpesaError):
-    """Safaricom explicitly refused the request (4xx). The money movement did not start."""
+    """Safaricom explicitly refused the request (4xx)."""
 
     def __init__(self, reason: str | None):
         super().__init__(reason or "REJECTED")
@@ -30,7 +34,7 @@ class MpesaRejected(MpesaError):
 
 
 class MpesaTransient(MpesaError):
-    """Timeout, 5xx, or network connection failure. Transaction status is unknown."""
+    """Timeout, 5xx, or network connection failure."""
 
 
 @dataclass(frozen=True)
@@ -41,14 +45,15 @@ class MpesaResult:
     external_id: str | None
     financial_transaction_id: str | None
     reason: str | None
+    result_code: int | None = None
 
 
 class MpesaGateway(Protocol):
-    """Protocol interface defining allowed operational calls against the Safaricom footprint."""
+    """Protocol interface defining allowed operational calls against Safaricom."""
 
     def request_to_pay(self, **kw) -> str: ...
     def get_request_to_pay(self, checkout_request_id: str) -> "MpesaResult | None": ...
-    def transfer(self, **kw) -> None: ...
+    def transfer(self, **kw) -> str: ...
     def get_transfer(self, reference_id: str) -> "MpesaResult | None": ...
 
 
@@ -67,10 +72,15 @@ def verify_callback_token(
 
 
 def to_mpesa_amount(amount: Decimal) -> str:
-    """Enforces absolute integer formatting constraints for transactional values."""
+    """Enforces integer formatting constraints for transactional values."""
     if amount <= 0 or amount != amount.to_integral_value():
         raise ValueError("Amount must be a positive whole number")
     return str(int(amount))
+
+
+def _get_eat_timestamp() -> str:
+    """Generates the YYYYMMDDHHmmss timestamp in East Africa Time (EAT)."""
+    return datetime.now(EAT_TIMEZONE).strftime("%Y%m%d%H%M%S")
 
 
 class MpesaClient:
@@ -91,7 +101,10 @@ class MpesaClient:
             if token and expiry > time.monotonic() + 30:
                 return token
 
-            credentials = f"{self.s.consumer_key.get_secret_value()}:{self.s.consumer_secret.get_secret_value()}"
+            credentials = (
+                f"{self.s.consumer_key.get_secret_value()}:"
+                f"{self.s.consumer_secret.get_secret_value()}"
+            )
             encoded_credentials = base64.b64encode(credentials.encode()).decode()
 
             headers = {"Authorization": f"Basic {encoded_credentials}"}
@@ -103,7 +116,11 @@ class MpesaClient:
                 raise MpesaTransient("Token request failed") from e
 
             if r.status_code != 200:
-                log.error("M-Pesa token generation error status=%s", r.status_code)
+                log.error(
+                    "M-Pesa token generation error status=%s body=%s",
+                    r.status_code,
+                    r.text,
+                )
                 raise MpesaTransient("Token request rejected by Safaricom")
 
             body = r.json()
@@ -113,8 +130,11 @@ class MpesaClient:
             return token
 
     def _callback_url(self, kind: Product, reference_id: str) -> str:
+        """Constructs the full public callback URL including the HMAC security token."""
         base = self.s.callback_base_url.rstrip("/")
-        return f"{base}/payments/mpesa/callback/{kind}/{reference_id}"
+        secret = self.s.callback_secret.get_secret_value()
+        token = callback_token(secret, kind, reference_id)
+        return f"{base}/payments/mpesa/callback/{kind}/{reference_id}/{token}"
 
     def request_to_pay(
         self,
@@ -125,11 +145,15 @@ class MpesaClient:
         account_reference: str,
         transaction_desc: str,
     ) -> str:
-        """Dispatches an operational STK Push request to the buyer's handset."""
+        """Dispatches an operational STK Push request to the buyer handset."""
         token = self._get_token()
-        timestamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+        timestamp = _get_eat_timestamp()
 
-        password_str = f"{self.s.express_shortcode}{self.s.express_passkey.get_secret_value()}{timestamp}"
+        password_str = (
+            f"{self.s.express_shortcode}"
+            f"{self.s.express_passkey.get_secret_value()}"
+            f"{timestamp}"
+        )
         password = base64.b64encode(password_str.encode()).decode()
 
         headers = {
@@ -137,6 +161,7 @@ class MpesaClient:
             "Content-Type": "application/json",
         }
 
+        
         payload = {
             "BusinessShortCode": self.s.express_shortcode,
             "Password": password,
@@ -148,12 +173,14 @@ class MpesaClient:
             "PhoneNumber": phone_number,
             "CallBackURL": self._callback_url("collection", reference_id),
             "AccountReference": account_reference[:12],
-            "TransactionDesc": transaction_desc[:20],
+            "TransactionDesc": transaction_desc[:13],
         }
 
         try:
             r = self.http.post(
-                "/mpesa/stkpush/v1/processrequest", json=payload, headers=headers
+                "/mpesa/stkpush/v1/processrequest",
+                json=payload,
+                headers=headers,
             )
         except httpx.HTTPError as e:
             raise MpesaTransient(
@@ -163,7 +190,7 @@ class MpesaClient:
         if r.status_code == 200:
             body = r.json()
             response_code = body.get("ResponseCode")
-            if response_code == "0":
+            if str(response_code) == "0":
                 return body["CheckoutRequestID"]
             raise MpesaRejected(body.get("ResponseDescription"))
 
@@ -172,16 +199,27 @@ class MpesaClient:
                 f"Safaricom returned standard error status {r.status_code}"
             )
 
+        err_msg = None
+        try:
+            err_json = r.json()
+            err_msg = err_json.get("errorMessage") or err_json.get("ResponseDescription")
+        except Exception:
+            pass
+
         raise MpesaRejected(
-            f"STK Push request rejected with status code {r.status_code}"
+            err_msg or f"STK Push request rejected with status code {r.status_code}"
         )
 
     def get_request_to_pay(self, checkout_request_id: str) -> MpesaResult | None:
         """Polls Safaricom backend node to query specific CheckoutRequestID processing state."""
         token = self._get_token()
-        timestamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+        timestamp = _get_eat_timestamp()
 
-        password_str = f"{self.s.express_shortcode}{self.s.express_passkey.get_secret_value()}{timestamp}"
+        password_str = (
+            f"{self.s.express_shortcode}"
+            f"{self.s.express_passkey.get_secret_value()}"
+            f"{timestamp}"
+        )
         password = base64.b64encode(password_str.encode()).decode()
 
         headers = {
@@ -197,7 +235,11 @@ class MpesaClient:
         }
 
         try:
-            r = self.http.post("/mpesa/stkpush/v1/query", json=payload, headers=headers)
+            r = self.http.post(
+                "/mpesa/stkpush/v1/query",
+                json=payload,
+                headers=headers,
+            )
         except httpx.HTTPError as e:
             raise MpesaTransient(
                 "Network connection error during transaction status query"
@@ -211,11 +253,18 @@ class MpesaClient:
             )
 
         b = r.json()
-        result_code = b.get("ResultCode")
+        raw_result_code = b.get("ResultCode")
 
-        if result_code == "0":
+        result_code_int: int | None = None
+        if raw_result_code is not None:
+            try:
+                result_code_int = int(raw_result_code)
+            except (ValueError, TypeError):
+                pass
+
+        if result_code_int == 0:
             status = "SUCCESSFUL"
-        elif result_code in ["1032", "1037", "2001"]:
+        elif result_code_int is not None:
             status = "FAILED"
         else:
             status = "PENDING"
@@ -227,4 +276,90 @@ class MpesaClient:
             external_id=checkout_request_id,
             financial_transaction_id=b.get("ResultDesc"),
             reason=b.get("ResultDesc"),
+            result_code=result_code_int,
         )
+
+    def transfer(
+        self,
+        *,
+        reference_id: str,
+        amount: Decimal,
+        phone_number: str,
+        remarks: str = "Athena Payout",
+        occasion: str = "",
+    ) -> str:
+        """Dispatches an M-Pesa B2C payout to a recipient phone number."""
+        token = self._get_token()
+        callback_url = self._callback_url("disbursement", reference_id)
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        sec_cred = getattr(self.s, "security_credential", None)
+        if hasattr(sec_cred, "get_secret_value"):
+            sec_cred_val = sec_cred.get_secret_value()
+        elif sec_cred:
+            sec_cred_val = str(sec_cred)
+        else:
+            sec_cred_val = "test"
+
+        party_a = (
+            getattr(self.s, "b2c_shortcode", None)
+            or getattr(self.s, "shortcode", None)
+            or "600984"
+        )
+
+        initiator_name = (
+            getattr(self.s, "initiator_name", None)
+            or getattr(self.s, "b2c_initiator_name", None)
+            or "testapi"
+        )
+
+        payload = {
+            "InitiatorName": initiator_name,
+            "SecurityCredential": sec_cred_val,
+            "CommandID": "BusinessPayment",
+            "Amount": to_mpesa_amount(amount),
+            "PartyA": str(party_a),
+            "PartyB": phone_number,
+            "Remarks": remarks[:100] or "Payout",
+            "QueueTimeOutURL": callback_url,
+            "ResultURL": callback_url,
+            "Occasion": occasion[:100],
+        }
+
+        try:
+            r = self.http.post(
+                "/mpesa/b2c/v1/paymentrequest",
+                json=payload,
+                headers=headers,
+            )
+        except httpx.HTTPError as e:
+            raise MpesaTransient("Network error during B2C transfer") from e
+
+        if r.status_code == 200:
+            body = r.json()
+            if str(body.get("ResponseCode")) == "0":
+                return body.get("ConversationID", reference_id)
+            raise MpesaRejected(body.get("ResponseDescription") or "B2C rejected by Daraja")
+
+        err_msg = None
+        try:
+            err_json = r.json()
+            err_msg = (
+                err_json.get("errorMessage")
+                or err_json.get("ResponseDescription")
+                or str(err_json)
+            )
+        except Exception:
+            err_msg = r.text
+
+        raise MpesaRejected(
+            f"B2C payout rejected with status {r.status_code}: {err_msg}"
+        )
+
+    def get_transfer(self, reference_id: str) -> MpesaResult | None:
+        """Query transfer status if needed (B2C relies on asynchronous callbacks)."""
+        return None

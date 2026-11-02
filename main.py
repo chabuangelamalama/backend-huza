@@ -20,15 +20,23 @@ async def lifespan(_: FastAPI):
     engine.dispose()
 
 
-app = FastAPI(title="HUZA API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="HUZA API",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
+# -----------------------------------------------------------------------------
+# CORS Configuration
+# -----------------------------------------------------------------------------
 if settings.is_production:
-    cors_options = {"allow_origins": settings.cors_origin_list}
+    cors_options = {
+        "allow_origins": settings.cors_origin_list,
+    }
 else:
-    cors_options = {"allow_origin_regex": r"https?://(localhost|127\.0\.0\.1)(:\d+)?"}
-
-
-app = FastAPI(title="HUZA API", version="0.1.0", lifespan=lifespan)
+    cors_options = {
+        "allow_origin_regex": r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    }
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,7 +46,9 @@ app.add_middleware(
     expose_headers=["Retry-After"],
 )
 
-
+# -----------------------------------------------------------------------------
+# Exception Handlers
+# -----------------------------------------------------------------------------
 @app.exception_handler(AppError)
 async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
@@ -47,19 +57,20 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
         headers=exc.headers,
     )
 
-
-
+# -----------------------------------------------------------------------------
+# Routers
+# -----------------------------------------------------------------------------
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(business.router)
 app.include_router(listing_router)
 app.include_router(price_guide.router)
 app.include_router(notification.router)
-
-
 app.include_router(payments_router)
 
-
+# -----------------------------------------------------------------------------
+# Health Checks
+# -----------------------------------------------------------------------------
 @app.get("/health")
 def health() -> dict[str, str]:
     """Let deployment verification confirm that the API is responding."""
@@ -73,6 +84,7 @@ def health_db():
         check_database()
     except Exception:
         return JSONResponse(
-            status_code=503, content={"status": "error", "database": "down"}
+            status_code=503,
+            content={"status": "error", "database": "down"},
         )
     return {"status": "ok", "database": "up"}
