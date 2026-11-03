@@ -1,10 +1,13 @@
-from fastapi import Depends, HTTPException, status
+"""FastAPI dependencies: current user, role checks, and service wiring."""
+
+from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from core.config import Settings, get_settings
 from database import get_db
-from core.exceptions import PermissionDenied
+from core.exceptions import InvalidToken, PermissionDenied
+from core.security import ACCESS, TokenError, decode_token
 from models.user import User, UserRole
 from repositories.user_repository import UserRepository
 from services.auth_service import AuthService
@@ -13,6 +16,11 @@ from services.registration_service import RegistrationService
 from services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
+
+
+# --------------------------------------------------------------------------- #
+# Wiring
+# --------------------------------------------------------------------------- #
 
 
 def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
@@ -57,10 +65,22 @@ def get_mailer(settings: Settings = Depends(get_settings)) -> EmailSender:
 # --------------------------------------------------------------------------- #
 
 
-def get_current_user():
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED, detail="Not ready yet"
-    )
+def get_current_user(
+    token: str | None = Depends(oauth2_scheme),
+    users: UserRepository = Depends(get_user_repository),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not token:
+        raise InvalidToken()
+    try:
+        claims = decode_token(token, ACCESS, settings)
+    except TokenError:
+        raise InvalidToken("Invalid or expired token.") from None
+
+    user = users.get_by_id(claims.user_id)
+    if user is None or user.token_version != claims.token_version:
+        raise InvalidToken("Invalid or expired token.")
+    return user
 
 
 def require_roles(*roles: UserRole):

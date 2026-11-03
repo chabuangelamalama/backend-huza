@@ -840,10 +840,6 @@ def test_router_get_photo_sends_image(client, monkeypatch):
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
-def test_get_current_user_is_not_ready_yet(session):
-    raises_status(401, lambda: get_current_user())
-
-
 def test_get_db_yields_a_session_and_closes_it(monkeypatch):
     from unittest.mock import MagicMock
 
