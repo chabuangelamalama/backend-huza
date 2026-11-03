@@ -14,3 +14,7 @@ htmlcov/
 *.sqlite
 *.sqlite3
 .DS_Store
+
+# Postman collections
+postman/
+.postman/
