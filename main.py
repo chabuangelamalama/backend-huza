@@ -8,8 +8,10 @@ from core.config import get_settings
 from core.exceptions import AppError
 from database import check_database, engine
 from routers import admin, auth, business, notification, price_guide
+from routers import admin, auth, business, businesses, notification, price_guide
 from routers.enquiries import router as enquiries_router
 from routers.listing import router as listing_router
+
 
 settings = get_settings()
 
@@ -70,3 +72,6 @@ def health_db():
             status_code=503, content={"status": "error", "database": "down"}
         )
     return {"status": "ok", "database": "up"}
+
+
+app.include_router(businesses.router)

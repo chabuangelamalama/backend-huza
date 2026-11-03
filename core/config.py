@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_starttls: bool = True
 
+    nominatim_url: str = "https://nominatim.openstreetmap.org"
+    nominatim_user_agent: str = "HUZA/0.1 (HUZA pilot, Kenya)"
+
     @field_validator("database_url")
     @classmethod
     def _normalize_url(cls, value: str) -> str:
