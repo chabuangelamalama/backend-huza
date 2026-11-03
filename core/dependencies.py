@@ -1,4 +1,4 @@
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -57,12 +57,8 @@ def get_mailer(settings: Settings = Depends(get_settings)) -> EmailSender:
 # --------------------------------------------------------------------------- #
 
 
-def get_current_user(db: Session = Depends(get_db)):
-    from models.user import User
-
-    # Fetch your active test user account straight from the table
-    user = db.query(User).filter(User.email == "test@huza.rw").first()
-    return user
+def get_current_user():
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not ready yet")
 
 
 def require_roles(*roles: UserRole):
