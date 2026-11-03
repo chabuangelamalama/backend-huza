@@ -5,6 +5,7 @@ import urllib.error
 import pytest
 
 from core import nominatim
+from core.config import get_settings
 
 
 class FakeOpen:
@@ -47,7 +48,7 @@ def test_search_sends_query_limited_to_kenya_with_user_agent_and_timeout(monkeyp
     assert "format=jsonv2" in request.full_url
     assert "addressdetails=1" in request.full_url
     assert "limit=3" in request.full_url
-    assert request.get_header("User-agent") == nominatim.USER_AGENT
+    assert request.get_header("User-agent") == get_settings().nominatim_user_agent
     assert timeout == nominatim.TIMEOUT_SECONDS
 
 
@@ -130,3 +131,20 @@ def test_failed_search_is_not_cached(monkeypatch):
     nominatim.search("Nakuru")
 
     assert len(fake.requests) == 1
+
+
+def test_search_uses_address_and_app_name_from_settings(monkeypatch):
+    fake = use(monkeypatch, FakeOpen())
+    settings = get_settings().model_copy(
+        update={
+            "nominatim_url": "https://places.example.test",
+            "nominatim_user_agent": "HUZA test (team@example.test)",
+        }
+    )
+    monkeypatch.setattr(nominatim, "get_settings", lambda: settings)
+
+    nominatim.search("Kisumu")
+
+    request, _ = fake.requests[0]
+    assert request.full_url.startswith("https://places.example.test/search?")
+    assert request.get_header("User-agent") == "HUZA test (team@example.test)"

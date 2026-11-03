@@ -1,13 +1,12 @@
 import json
-import os
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE_URL = os.getenv("NOMINATIM_URL", "https://nominatim.openstreetmap.org")
-USER_AGENT = os.getenv("NOMINATIM_USER_AGENT", "HUZA/0.1 (HUZA pilot, Kenya)")
+from core.config import get_settings
+
 TIMEOUT_SECONDS = 5
 MIN_INTERVAL_SECONDS = 1.0
 CACHE_SECONDS = 24 * 60 * 60
@@ -54,9 +53,13 @@ def search(query: str, limit: int = 5) -> list[dict]:
             "accept-language": "en",
         }
     )
+    settings = get_settings()
     request = urllib.request.Request(
-        f"{BASE_URL}/search?{params}",
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        f"{settings.nominatim_url}/search?{params}",
+        headers={
+            "User-Agent": settings.nominatim_user_agent,
+            "Accept": "application/json",
+        },
     )
     _wait_turn()
     try:

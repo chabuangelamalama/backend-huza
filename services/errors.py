@@ -1,9 +1,8 @@
-class ServiceError(Exception):
-    status_code = 400
+from core.exceptions import AppError
 
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
+
+class ServiceError(AppError):
+    status_code = 400
 
 
 class NotFoundError(ServiceError):
