@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -841,7 +841,16 @@ def test_router_get_photo_sends_image(client, monkeypatch):
 
 
 def test_get_current_user_is_not_ready_yet():
-    raises_status(401, get_current_user)
+    app = FastAPI()
+
+    @app.get("/")
+    def protected(user=Depends(get_current_user)):
+        return {"user": user}
+
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 401
 
 
 def test_get_db_yields_a_session_and_closes_it(monkeypatch):
