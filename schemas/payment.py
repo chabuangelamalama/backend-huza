@@ -33,7 +33,7 @@ def normalize_msisdn(raw: str) -> str:
 def mask_phone(phone: str | None) -> str | None:
     if not phone:
         return None
-   
+
     return f"{phone[:5]}****{phone[-3:]}" if len(phone) >= 9 else "****"
 
 
@@ -68,6 +68,7 @@ def safe_reason(raw: str | None) -> str | None:
 
 # ---- Requests ----------------------------------------------------------------
 
+
 class InitiatePaymentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     phone_number: str = Field(min_length=9, max_length=20)
@@ -95,6 +96,7 @@ class PayoutDetailsRequest(BaseModel):
 
 
 # ---- Responses ---------------------------------------------------------------
+
 
 class PaymentBuyerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -165,6 +167,7 @@ class PayoutDetailsOut(BaseModel):
 
 # ---- View Helpers ------------------------------------------------------------
 
+
 def buyer_view(p: Payment) -> PaymentBuyerOut:
     msg = None
     if p.status == PaymentStatus.FAILED:
@@ -202,7 +205,7 @@ def seller_view(p: Payment) -> PaymentSellerOut:
 
 def admin_view(p: Payment) -> PaymentAdminOut:
     base = buyer_view(p).model_dump()
-   
+
     base["phone_number"] = p.phone_number
 
     return PaymentAdminOut(

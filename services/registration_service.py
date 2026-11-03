@@ -216,8 +216,10 @@ class RegistrationService:
             display_name=place.display_name or place.name,
             latitude=latitude,
             longitude=longitude,
-            district=place.district,
-            province=place.province,
+            sub_county=place.district,
+            county=place.province,
+
+
         )
         self.users.add(location)
         self.users.flush()

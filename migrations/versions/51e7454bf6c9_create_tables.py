@@ -106,10 +106,10 @@ def upgrade() -> None:
         sa.Column("rejection_reason", sa.Text(), nullable=True),
         sa.Column("payout_phone", sa.Text(), nullable=True),
         sa.Column(
-    "payout_network",
-    sa.Enum("MPESA", name="payout_network"),
-    nullable=True,
-),
+            "payout_network",
+            sa.Enum("MPESA", name="payout_network"),
+            nullable=True,
+        ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),

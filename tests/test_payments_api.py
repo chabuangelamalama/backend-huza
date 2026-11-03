@@ -14,7 +14,7 @@ def api(session, world):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_db] = lambda: session
-   
+
     app.dependency_overrides[get_settings] = lambda: make_settings(
         mode="simulated", simulator_delay_seconds=3600
     )

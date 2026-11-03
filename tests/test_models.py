@@ -57,8 +57,8 @@ def make_location(session, osm_id=1, osm_type=OsmType.NODE):
         display_name="Karen, Nairobi, Kenya",
         latitude=Decimal("-1.320000"),
         longitude=Decimal("36.702000"),
-        district="Nairobi",
-        province="Nairobi County",
+        sub_county="Nairobi",
+        county="Nairobi County",
     )
     session.add(location)
     session.flush()

@@ -22,7 +22,7 @@ CHECKOUT_ID = "ws_CO_28102026165942123"
 
 def settings(**kw) -> MpesaSettings:
     base = dict(
-        base_url="https://mpesa.test",
+        base_url="https://sandbox.safaricom.co.ke",
         currency="KES",
         consumer_key="key",
         consumer_secret="secret",
@@ -37,7 +37,7 @@ def settings(**kw) -> MpesaSettings:
 
 def client_for(handler) -> MpesaClient:
     http = httpx.Client(
-        base_url="https://mpesa.test", transport=httpx.MockTransport(handler)
+        base_url="https://sandbox.safaricom.co.ke", transport=httpx.MockTransport(handler)
     )
     return MpesaClient(settings(), http)
 

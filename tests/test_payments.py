@@ -108,7 +108,7 @@ def make_settings(**kw) -> MpesaSettings:
         currency="KES",
         callback_secret=SECRET,
         attempt_cooldown_seconds=0,
-        status_poll_min_interval_seconds=0,
+        status_poll_min_interval_seconds=1,
         payout_change_hold_hours=24,
     )
     base.update(kw)

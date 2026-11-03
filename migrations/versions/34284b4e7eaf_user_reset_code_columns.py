@@ -11,12 +11,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "app_user", sa.Column("reset_code_hash", sa.String(length=255), nullable=True)
-    )
-    op.add_column(
-        "app_user",
-        sa.Column("reset_code_expires_at", sa.DateTime(timezone=True), nullable=True),
+    op.execute(
+        """
+        ALTER TABLE app_user ADD COLUMN IF NOT EXISTS reset_code_hash VARCHAR(255);
+        ALTER TABLE app_user ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMPTZ;
+        """
     )
 
 

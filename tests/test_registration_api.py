@@ -9,7 +9,9 @@ from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
+from starlette.testclient import TestClient
 
+from main import app
 from models import Location, User
 from models.business import ApprovalStatus
 from schemas.registration import RegisterRequest
@@ -17,16 +19,23 @@ from services.registration_service import manual_osm_id
 from .test_auth_api import (
     PASSWORD,
     auth_header,
+    mailer,
     make_admin,
     sign_in,
 )
 
 
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
 def payload(**changes) -> dict:
+    unique_id = uuid.uuid4().hex[:8]
     body = {
         "first_name": "Aline",
         "last_name": "Uwase",
-        "email": "aline@inzozi.rw",
+        "email": f"aline_{unique_id}@inzozi.rw",
         "phone": "+250788340221",
         "password": PASSWORD,
         "business_role": "SUPPLIER",
@@ -96,13 +105,14 @@ def test_a_manual_place_gets_the_same_negative_id_every_time():
 def test_register_creates_a_pending_business_and_signs_the_user_in(
     client, session, mailer
 ):
-    response = register(client)
+    target_email = f"test_{uuid.uuid4().hex[:8]}@inzozi.rw"
+    response = register(client, email=target_email)
 
     assert response.status_code == 201
     body = response.json()
     assert body["token_type"] == "bearer"
     user = body["user"]
-    assert user["email"] == "aline@inzozi.rw"
+    assert user["email"] == target_email
     assert user["role"] == "BUSINESS_USER"
     assert user["email_verified"] is False
     assert user["business"]["approval_status"] == "PENDING"
@@ -110,15 +120,16 @@ def test_register_creates_a_pending_business_and_signs_the_user_in(
 
     me = client.get("/auth/me", headers=auth_header(body["access_token"]))
     assert me.status_code == 200
-    assert sign_in(client, "aline@inzozi.rw").status_code == 200
+    assert sign_in(client, target_email).status_code == 200
 
     assert len(mailer.sent) == 1
-    assert mailer.sent[0].to == "aline@inzozi.rw"
+    assert mailer.sent[0].to == target_email
 
 
 def test_the_same_email_cannot_register_twice(client, session):
-    assert register(client).status_code == 201
-    again = register(client, email="  ALINE@inzozi.rw ")
+    target_email = f"dup_{uuid.uuid4().hex[:8]}@inzozi.rw"
+    assert register(client, email=target_email).status_code == 201
+    again = register(client, email=f"  {target_email.upper()} ")
     assert again.status_code == 409
 
 
@@ -128,10 +139,19 @@ def test_bad_registrations_are_refused(client, session):
 
 
 def test_two_businesses_in_the_same_place_share_one_location(client, session):
-    register(client)
-    register(client, email="second@inzozi.rw")
+    unique_place = f"Place_{uuid.uuid4().hex[:6]}"
+    loc = {
+        "name": unique_place,
+        "display_name": f"{unique_place}, Kigali, Rwanda",
+        "latitude": -1.9577,
+        "longitude": 30.1127,
+        "district": "Gasabo",
+        "province": "Kigali City",
+    }
+    register(client, location=loc)
+    register(client, location=loc)
 
-    places = session.query(Location).filter(Location.name == "Remera Market").all()
+    places = session.query(Location).filter(Location.name == unique_place).all()
     assert len(places) == 1
 
 
@@ -260,13 +280,14 @@ def test_an_approved_business_cannot_be_edited_here(client, session):
 
 
 def test_the_login_answer_shows_why_a_business_was_rejected(client, session):
-    response = register(client)
+    target_email = f"user_{uuid.uuid4().hex[:8]}@inzozi.rw"
+    response = register(client, email=target_email)
     business = business_of(session, response).business
     business.approval_status = ApprovalStatus.REJECTED
     business.rejection_reason = "Registration number is missing."
     session.flush()
 
-    shown = sign_in(client, "aline@inzozi.rw").json()["user"]["business"]
+    shown = sign_in(client, target_email).json()["user"]["business"]
 
     assert shown["approval_status"] == "REJECTED"
     assert shown["rejection_reason"] == "Registration number is missing."

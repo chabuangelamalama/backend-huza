@@ -62,7 +62,6 @@ class User(TimestampMixin, Base):
     reset_code_hash = Column(String(255), nullable=True)
     reset_code_expires_at = timestamptz(nullable=True)
 
-   
     email_verified_at = timestamptz(nullable=True)
     verify_code_hash = Column(String(255), nullable=True)
     verify_code_expires_at = timestamptz(nullable=True)

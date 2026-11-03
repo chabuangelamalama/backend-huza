@@ -19,7 +19,25 @@ def upgrade() -> None:
         "UPDATE business SET payout_phone = NULL, payout_network = NULL "
         "WHERE payout_network = 'MTN_MOMO'"
     )
-    op.execute("ALTER TYPE payout_network RENAME VALUE 'MTN_MOMO' TO 'MPESA'")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_enum
+                JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+                WHERE pg_type.typname = 'payout_network' AND pg_enum.enumlabel = 'MTN_MOMO'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM pg_enum
+                JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+                WHERE pg_type.typname = 'payout_network' AND pg_enum.enumlabel = 'MPESA'
+            ) THEN
+                ALTER TYPE payout_network RENAME VALUE 'MTN_MOMO' TO 'MPESA';
+            END IF;
+        END
+        $$;
+        """
+    )
 
 
 def downgrade() -> None:

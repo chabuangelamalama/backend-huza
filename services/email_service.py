@@ -30,7 +30,9 @@ class EmailSender(Protocol):
 class BrevoEmailSender:
     """Sends transactional email via Brevo REST API over HTTPS (port 443)."""
 
-    def __init__(self, api_key: str, sender_email: str, sender_name: str = "HUZA Team", **_kwargs) -> None:
+    def __init__(
+        self, api_key: str, sender_email: str, sender_name: str = "HUZA Team", **_kwargs
+    ) -> None:
         self.api_key = api_key
         self.sender_email = sender_email
         self.sender_name = sender_name
@@ -73,7 +75,9 @@ class BrevoEmailSender:
             error_body = e.read().decode("utf-8", errors="replace")
             logger.exception("Brevo HTTP error %s: %s", e.code, error_body)
         except Exception:
-            logger.exception("Could not send email %r to %s", message.subject, message.to)
+            logger.exception(
+                "Could not send email %r to %s", message.subject, message.to
+            )
 
 
 # Alias so existing imports in core/dependencies.py don't break
@@ -91,12 +95,16 @@ class LoggingEmailSender:
                 "EMAIL to %s: %s\n%s", message.to, message.subject, logged_item
             )
         else:
-            logger.warning("No BREVO_API_KEY is set, so %r was not sent.", message.subject)
+            logger.warning(
+                "No BREVO_API_KEY is set, so %r was not sent.", message.subject
+            )
 
 
 def build_email_sender(settings: Settings) -> EmailSender:
     api_key = getattr(settings, "brevo_api_key", None) or os.getenv("BREVO_API_KEY")
-    sender_email = getattr(settings, "email_from", None) or os.getenv("EMAIL_FROM", "chabuangel@gmail.com")
+    sender_email = getattr(settings, "email_from", None) or os.getenv(
+        "EMAIL_FROM", "chabuangel@gmail.com"
+    )
 
     if api_key:
         return BrevoEmailSender(

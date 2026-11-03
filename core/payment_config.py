@@ -1,4 +1,3 @@
-
 from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
@@ -21,11 +20,10 @@ class MpesaSettings(BaseSettings):
 
     simulator_delay_seconds: float = Field(default=5.0, ge=0)
 
-    # Correct Daraja API base URLs
+  
     base_url: str | None = None
 
     currency: str = "KES"
-
 
     consumer_key: SecretStr = SecretStr("")
     consumer_secret: SecretStr = SecretStr("")
@@ -33,12 +31,9 @@ class MpesaSettings(BaseSettings):
     express_shortcode: str = ""
     express_passkey: SecretStr = SecretStr("")
 
-    # HMAC secret used to protect your callback URL.
-    # This is your own secret, NOT a Safaricom credential.
     callback_secret: SecretStr = SecretStr("")
 
-    # Public HTTPS address, e.g.
-    # https://example.trycloudflare.com
+    
     callback_base_url: str = ""
 
     # ---------------------------------------------------------
@@ -128,7 +123,7 @@ class MpesaSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_mpesa_settings(self) -> "MpesaSettings":
 
-        # Select the correct Daraja URL automatically.
+       
         expected_base_url = (
             "https://api.safaricom.co.ke"
             if self.environment == "production"
@@ -143,9 +138,7 @@ class MpesaSettings(BaseSettings):
 
         if self.mode == "live":
             if self.base_url.rstrip("/") != expected_base_url:
-                raise ValueError(
-                    "MPESA_BASE_URL does not match MPESA_ENVIRONMENT"
-                )
+                raise ValueError("MPESA_BASE_URL does not match MPESA_ENVIRONMENT")
 
         if self.currency != "KES":
             raise ValueError("MPESA_CURRENCY must be KES")
@@ -169,9 +162,7 @@ class MpesaSettings(BaseSettings):
                 problems.append("MPESA_CALLBACK_SECRET is missing")
 
             if not self.callback_base_url.startswith("https://"):
-                problems.append(
-                    "MPESA_CALLBACK_BASE_URL must be a public HTTPS URL"
-                )
+                problems.append("MPESA_CALLBACK_BASE_URL must be a public HTTPS URL")
 
             if problems:
                 raise ValueError("; ".join(problems))

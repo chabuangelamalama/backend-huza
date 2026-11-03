@@ -1,6 +1,7 @@
 
 """Payment endpoints (buyer, seller, M-Pesa callback, admin)."""
 
+import json
 from uuid import UUID
 
 from fastapi import (
@@ -11,7 +12,7 @@ from fastapi import (
     Response,
     status,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from core.payment_config import MpesaSettings
@@ -24,6 +25,7 @@ from core.payment_deps import (
 from models.business import BusinessRole
 from models.payment import Payment
 from models.user import User
+from schemas.payment import normalize_msisdn
 from services.mpesa import MpesaGateway
 from services.payment_service import PaymentService
 
@@ -37,7 +39,12 @@ class PaymentStartRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    phone_number: str
+    phone_number: str = Field(min_length=9, max_length=20)
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        return normalize_msisdn(value)
 
 
 class PayoutDetailsRequest(BaseModel):
@@ -45,8 +52,13 @@ class PayoutDetailsRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    payout_phone: str
+    payout_phone: str = Field(min_length=9, max_length=20)
     payout_network: str | None = None
+
+    @field_validator("payout_phone")
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        return normalize_msisdn(value)
 
 
 class RefundRequest(BaseModel):
@@ -118,7 +130,8 @@ def _view(payment: Payment, side: str) -> dict:
         )
 
     elif side == "seller":
-        # Never expose the buyer's phone number to the seller.
+
+      
         pass
 
     elif side == "admin":
@@ -237,18 +250,19 @@ async def mpesa_callback(
     request: Request,
     svc: PaymentService = Depends(get_service),
 ):
-    """
-    Receive the Safaricom Daraja callback for collection (STK Push)
-    and disbursement (B2C Payout).
-    """
+    """Receive a Daraja callback or a signed empty-body reachability ping."""
+    raw_body = await request.body()
 
-    try:
-        payload = await request.json()
-    except Exception:
-        return Response(
-            content="Invalid callback JSON",
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
+    if not raw_body or not raw_body.strip():
+        payload = {}
+    else:
+        try:
+            payload = json.loads(raw_body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return Response(
+                content="Invalid callback JSON",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
 
     if not isinstance(payload, dict):
         return Response(
@@ -256,18 +270,10 @@ async def mpesa_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    svc.handle_callback(
-        kind,
-        reference_id,
-        token,
-        payload,
-    )
+    
+    svc.handle_callback(kind, reference_id, token, payload)
 
-    # Safaricom should receive a successful HTTP response after
-    # the callback has been processed.
-    return Response(
-        status_code=status.HTTP_200_OK,
-    )
+    return Response(status_code=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------
