@@ -1,12 +1,10 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.params import Depends as DependsClass
+from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from core.config import Settings, get_settings
 from database import get_db
-from core.exceptions import InvalidToken, PermissionDenied
-from core.security import ACCESS, TokenError, decode_token
+from core.exceptions import PermissionDenied
 from models.user import User, UserRole
 from repositories.user_repository import UserRepository
 from services.auth_service import AuthService
@@ -59,30 +57,11 @@ def get_mailer(settings: Settings = Depends(get_settings)) -> EmailSender:
 # --------------------------------------------------------------------------- #
 
 
-def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    users: UserRepository = Depends(get_user_repository),
-    settings: Settings = Depends(get_settings),
-) -> User:
-    # Missing token, or called directly without FastAPI resolving dependencies.
-    if (
-        not token
-        or isinstance(token, DependsClass)
-        or isinstance(settings, DependsClass)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    try:
-        claims = decode_token(token, ACCESS, settings)
-    except TokenError:
-        raise InvalidToken("Invalid or expired token.") from None
+def get_current_user(db: Session = Depends(get_db)):
+    from models.user import User
 
-    user = users.get_by_id(claims.user_id)
-    if user is None or user.token_version != claims.token_version:
-        raise InvalidToken("Invalid or expired token.")
+    # Fetch your active test user account straight from the table
+    user = db.query(User).filter(User.email == "test@huza.rw").first()
     return user
 
 

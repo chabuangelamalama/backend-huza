@@ -1,0 +1,7 @@
+$kind: collection
+name: Enquiries
+auth:
+  type: bearer
+  credentials:
+    - key: token
+      value: '{{access_token}}'

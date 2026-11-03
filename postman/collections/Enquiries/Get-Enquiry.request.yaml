@@ -1,0 +1,37 @@
+$kind: http-request
+name: Get Enquiry
+order: 4000
+method: GET
+url: '{{base_url}}/enquiries/{{enquiry_id}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status is 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("enquiry_id matches the created enquiry", function () {
+          const json = pm.response.json();
+          pm.expect(json.enquiry_id).to.eql(pm.environment.get("enquiry_id"));
+      });
+
+      pm.test("Response has all required fields", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("enquiry_id");
+          pm.expect(json).to.have.property("listing_id");
+          pm.expect(json).to.have.property("buyer_business_id");
+          pm.expect(json).to.have.property("seller_business_id");
+          pm.expect(json).to.have.property("status");
+          pm.expect(json).to.have.property("quantity");
+          pm.expect(json).to.have.property("unit");
+          pm.expect(json).to.have.property("unit_price");
+          pm.expect(json).to.have.property("total_amount");
+      });
+
+      pm.test("total_amount equals quantity x unit_price", function () {
+          const json = pm.response.json();
+          pm.expect(Number(json.total_amount)).to.eql(
+              Number(json.quantity) * Number(json.unit_price)
+          );
+      });
