@@ -1,18 +1,22 @@
-"""Errors that map straight to an HTTP response (see the handler in main.py)."""
+"""HTTP-aware application errors for FastAPI auth and service layers."""
 
 import math
 
+from fastapi import HTTPException
 
-class AppError(Exception):
+
+class AppError(HTTPException):
     status_code = 400
     detail = "Bad request."
 
     def __init__(
         self, detail: str | None = None, headers: dict[str, str] | None = None
     ) -> None:
-        self.detail = detail or self.detail
-        self.headers = headers
-        super().__init__(self.detail)
+        super().__init__(
+            status_code=self.status_code,
+            detail=detail or self.detail,
+            headers=headers,
+        )
 
 
 class InvalidCredentials(AppError):
