@@ -161,7 +161,6 @@ class MpesaClient:
             "Content-Type": "application/json",
         }
 
-        
         payload = {
             "BusinessShortCode": self.s.express_shortcode,
             "Password": password,
@@ -202,7 +201,9 @@ class MpesaClient:
         err_msg = None
         try:
             err_json = r.json()
-            err_msg = err_json.get("errorMessage") or err_json.get("ResponseDescription")
+            err_msg = err_json.get("errorMessage") or err_json.get(
+                "ResponseDescription"
+            )
         except Exception:
             pass
 
@@ -343,7 +344,9 @@ class MpesaClient:
             body = r.json()
             if str(body.get("ResponseCode")) == "0":
                 return body.get("ConversationID", reference_id)
-            raise MpesaRejected(body.get("ResponseDescription") or "B2C rejected by Daraja")
+            raise MpesaRejected(
+                body.get("ResponseDescription") or "B2C rejected by Daraja"
+            )
 
         err_msg = None
         try:

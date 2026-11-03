@@ -233,6 +233,7 @@ class PaymentService:
             {"buyer"},
         )
 
+      
         for old_payment in repo.pending_for_enquiry(
             self.db,
             enquiry_id,
@@ -274,7 +275,6 @@ class PaymentService:
                 amount=enquiry.total_amount,
             )
 
-         
             self.db.commit()
 
         except IntegrityError:
@@ -464,8 +464,6 @@ class PaymentService:
 
         if payment.status != PaymentStatus.PENDING:
             return
-
-
         if getattr(
             payment,
             "mpesa_checkout_request_id",
@@ -532,7 +530,6 @@ class PaymentService:
             self.db.commit()
 
         except MpesaTransient as exc:
-
             log.warning(
                 "Ambiguous STK Push result payment_id=%s error=%s",
                 payment_id,
@@ -582,10 +579,11 @@ class PaymentService:
         )
 
         if not checkout_id:
-            
+            # No CheckoutRequestID means we cannot safely query.
+            # In particular, do not resend the STK Push here.
             return payment
 
-
+        # Avoid excessive repeated polling in one application process.
         now = time.monotonic()
 
         with _POLL_LOCK:
@@ -628,7 +626,8 @@ class PaymentService:
                 self.db.commit()
 
             elif result.status == "SUCCESSFUL":
-                
+                # A query result is not a receipt number.
+                # Wait for the callback to supply receipt metadata.
                 if not payment.needs_review:
                     self._flag_review(
                         payment,
@@ -680,6 +679,123 @@ class PaymentService:
     # Daraja callback handler
     # ------------------------------------------------------------------
 
+
+    def _handle_disbursement_callback(
+        self,
+        reference_id: str,
+        token: str,
+        payload: dict,
+    ) -> None:
+        """Process an asynchronous Safaricom Daraja B2C disbursement callback."""
+        callback_secret = self.s.callback_secret.get_secret_value()
+
+        if not callback_secret:
+            log.error("M-Pesa callback secret is not configured")
+            raise PaymentError(
+                500,
+                "callback_configuration_error",
+                "Callback verification is not configured",
+            )
+
+        if not verify_callback_token(
+            callback_secret,
+            "disbursement",
+            reference_id,
+            token,
+        ):
+            log.warning(
+                "Invalid M-Pesa B2C callback token reference_id=%s",
+                reference_id,
+            )
+            raise PaymentError(
+                403,
+                "invalid_callback_token",
+                "Invalid callback token",
+            )
+
+        payment = None
+        try:
+            payment_uuid = UUID(reference_id)
+            payment = (
+                self.db.query(Payment)
+                .filter(Payment.payment_id == payment_uuid)
+                .with_for_update()
+                .first()
+            )
+        except (ValueError, TypeError):
+            pass
+
+        if payment is None:
+            payment = (
+                self.db.query(Payment)
+                .filter(Payment.payout_reference == reference_id)
+                .with_for_update()
+                .first()
+            )
+
+        if payment is None:
+            raise PaymentError(404, *_NOT_FOUND)
+
+        result = payload.get("Result", {})
+        if not result:
+            raise PaymentError(
+                400,
+                "invalid_callback",
+                "Invalid Daraja B2C callback body",
+            )
+
+        result_code = result.get("ResultCode")
+        result_desc = result.get("ResultDesc") or ""
+        conversation_id = result.get("ConversationID")
+        transaction_id = result.get("TransactionID")
+
+        if result_code is None:
+            raise PaymentError(
+                400,
+                "invalid_callback",
+                "Missing ResultCode in B2C callback",
+            )
+
+        try:
+            result_code_int = int(result_code)
+        except (TypeError, ValueError):
+            self._flag_review(
+                payment,
+                "B2C Callback contains an invalid ResultCode",
+            )
+            self.db.commit()
+            return
+
+        if payment.payout_status == PayoutStatus.PAID:
+            self.db.commit()
+            return
+
+        if result_code_int == 0:
+            payment.payout_status = PayoutStatus.PAID
+            payment.paid_out_at = _now()
+            payment.payout_failure_reason = None
+            if conversation_id and not payment.payout_reference:
+                payment.payout_reference = str(conversation_id)
+
+            self._event(
+                "PAYOUT_PAID",
+                payment_id=payment.payment_id,
+                conversation_id=conversation_id,
+                transaction_id=transaction_id,
+            )
+        else:
+            payment.payout_status = PayoutStatus.FAILED
+            payment.payout_failure_reason = str(result_desc)[:100]
+
+            self._event(
+                "PAYOUT_FAILED",
+                payment_id=payment.payment_id,
+                result_code=result_code_int,
+                reason=result_desc,
+            )
+
+        self.db.commit()
+
     def handle_callback(
         self,
         kind: str,
@@ -695,6 +811,11 @@ class PaymentService:
 
         The callback body is then checked against the stored payment.
         """
+
+        if kind == "disbursement":
+            return self._handle_disbursement_callback(
+                reference_id, token, payload
+            )
 
         if kind != "collection":
             raise PaymentError(
@@ -782,12 +903,10 @@ class PaymentService:
                 "Callback is missing required transaction fields",
             )
 
-
         if merchant_request_id:
             payment.mpesa_merchant_request_id = str(
                 merchant_request_id
             )
-
 
         stored_checkout_id = getattr(
             payment,
@@ -817,7 +936,7 @@ class PaymentService:
                 "Callback does not match this payment",
             )
 
-
+       
         if payment.status == PaymentStatus.SUCCESSFUL:
             self.db.commit()
             return
@@ -844,7 +963,7 @@ class PaymentService:
             self.db.commit()
             return
 
-
+      
         if result_code_int != 0:
             payment.status = PaymentStatus.FAILED
             payment.failure_reason = safe_reason(
@@ -878,7 +997,7 @@ class PaymentService:
             self.db.commit()
             return
 
-
+      
         try:
             received_amount = Decimal(
                 str(callback_amount)
@@ -901,7 +1020,6 @@ class PaymentService:
             )
             self.db.commit()
             return
-
 
         if callback_phone is not None:
             try:
@@ -930,7 +1048,7 @@ class PaymentService:
                 self.db.commit()
                 return
 
-
+        # Only an actual M-Pesa receipt is stored in this field.
         payment.mpesa_receipt_number = str(receipt)
         payment.status = PaymentStatus.SUCCESSFUL
         payment.paid_at = _now()
@@ -943,7 +1061,7 @@ class PaymentService:
             amount=received_amount,
         )
 
-        # Deduct stock once, and only once.
+    
         if not payment.stock_deducted:
             enquiry = repo.get_enquiry(
                 self.db,
@@ -1177,8 +1295,7 @@ class PaymentService:
                 "The payment has not been confirmed as successful",
             )
 
-        # This marks payout as awaiting processing.
-        # It does not mean that money has been transferred to the seller.
+
         payment.payout_status = PayoutStatus.PENDING
 
         self.db.commit()
@@ -1277,6 +1394,7 @@ class PaymentService:
 
         if not payment:
             raise PaymentError(404, *_NOT_FOUND)
+
 
         raise PaymentError(
             501,
