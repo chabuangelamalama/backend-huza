@@ -45,8 +45,6 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
     )
 
 
-
-
 app.include_router(enquiries_router, prefix="/api/v1", include_in_schema=False)
 app.include_router(auth.router)
 app.include_router(admin.router)
