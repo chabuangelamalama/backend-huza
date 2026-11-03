@@ -58,7 +58,9 @@ def get_mailer(settings: Settings = Depends(get_settings)) -> EmailSender:
 
 
 def get_current_user():
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not ready yet")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Not ready yet"
+    )
 
 
 def require_roles(*roles: UserRole):
