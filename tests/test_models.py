@@ -320,3 +320,8 @@ def test_user_role_defaults_to_business_user(session):
 
 def test_email_must_be_unique(session):
     location = make_location(session)
+    first = make_business(session, location)
+    second = make_business(session, location)
+    make_user(session, first, email="same@example.ke")
+    with pytest.raises(IntegrityError):
+        make_user(session, second, email="same@example.ke")

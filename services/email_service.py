@@ -70,17 +70,19 @@ class BrevoEmailSender:
     def send(self, message: OutgoingEmail) -> None:
         try:
             self.send_or_raise(message)
-            logger.info("Successfully sent email %r to %s", message.subject, message.to)
+            logger.info("Sent email %r", message.subject)
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8", errors="replace")
-            logger.exception("Brevo HTTP error %s: %s", e.code, error_body)
-        except Exception:
-            logger.exception(
-                "Could not send email %r to %s", message.subject, message.to
+            logger.error(
+                "Could not send email %r: Brevo HTTP error %s: %s",
+                message.subject,
+                e.code,
+                error_body,
             )
+        except Exception:
+            logger.exception("Could not send email %r", message.subject)
 
 
-# Alias so existing imports in core/dependencies.py don't break
 SmtpEmailSender = BrevoEmailSender
 
 

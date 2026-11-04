@@ -6,55 +6,14 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from fastapi.testclient import TestClient
 
-from core.config import Settings, get_settings
-from core.dependencies import get_mailer
 from core.security import hash_password
-from database import get_db
-from main import app
 from models import Business, Location, User
 from models.business import BusinessRole, BusinessType
 from models.location import OsmType
 from models.user import UserRole
 
 PASSWORD = "Correct1horse"
-
-
-class FakeMailer:
-    def __init__(self):
-        self.sent = []
-
-    def send(self, message):
-        self.sent.append(message)
-
-
-@pytest.fixture
-def mailer():
-    return FakeMailer()
-
-
-@pytest.fixture
-def client(session, mailer):
-    settings = Settings(
-        _env_file=None,
-        database_url="sqlite://",
-        jwt_secret="test-secret-that-is-at-least-32-characters-long",
-        max_failed_logins=3,
-        lockout_minutes=15,
-        environment="test",
-    )
-    app.dependency_overrides[get_db] = lambda: session
-    app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[get_mailer] = lambda: mailer
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
-
-
-# --------------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------------- #
 
 
 def make_admin(session, **changes) -> User:
@@ -171,11 +130,6 @@ def test_the_docs_authorize_form_works(client, session):
     assert response.json()["access_token"]
 
 
-# --------------------------------------------------------------------------- #
-# Brute-force protection
-# --------------------------------------------------------------------------- #
-
-
 def test_the_account_locks_after_too_many_failures(client, session):
     user = make_business_user(session)
 
@@ -214,11 +168,6 @@ def test_an_admin_can_unlock_an_account(client, session):
 
     assert response.status_code == 200
     assert sign_in(client, user.email).status_code == 200
-
-
-# --------------------------------------------------------------------------- #
-# Sign out and password change
-# --------------------------------------------------------------------------- #
 
 
 def test_logout_revokes_the_token(client, session):
@@ -272,11 +221,6 @@ def test_weak_new_passwords_are_refused(client, session, weak):
     )
 
     assert response.status_code == 400
-
-
-# --------------------------------------------------------------------------- #
-# Forgot and reset password
-# --------------------------------------------------------------------------- #
 
 
 def reset_code_from(mailer) -> str:
@@ -364,11 +308,6 @@ def test_resetting_a_password_also_clears_a_lockout(client, session, mailer):
     )
 
     assert sign_in(client, user.email, "Reset4success").status_code == 200
-
-
-# --------------------------------------------------------------------------- #
-# Role-based access
-# --------------------------------------------------------------------------- #
 
 
 def test_admin_routes_need_a_token(client):

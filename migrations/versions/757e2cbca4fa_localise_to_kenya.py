@@ -17,7 +17,7 @@ def upgrade() -> None:
     )
     op.execute(
         "UPDATE business SET payout_phone = NULL, payout_network = NULL "
-        "WHERE payout_network = 'MTN_MOMO'"
+        "WHERE payout_network::text = 'MTN_MOMO'"
     )
     op.execute(
         """
@@ -43,11 +43,36 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         "UPDATE business SET payout_phone = NULL, payout_network = NULL "
-        "WHERE payout_network = 'MPESA'"
+        "WHERE payout_network::text = 'MPESA'"
     )
-    op.execute("ALTER TYPE payout_network RENAME VALUE 'MPESA' TO 'MTN_MOMO'")
-    op.alter_column(
-        "payment", "mpesa_transaction_id", new_column_name="momo_transaction_id"
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_enum
+                JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+                WHERE pg_type.typname = 'payout_network' AND pg_enum.enumlabel = 'MPESA'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM pg_enum
+                JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+                WHERE pg_type.typname = 'payout_network' AND pg_enum.enumlabel = 'MTN_MOMO'
+            ) THEN
+                ALTER TYPE payout_network RENAME VALUE 'MPESA' TO 'MTN_MOMO';
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'payment' AND column_name = 'mpesa_transaction_id'
+            ) AND NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'payment' AND column_name = 'momo_transaction_id'
+            ) THEN
+                ALTER TABLE payment
+                    RENAME COLUMN mpesa_transaction_id TO momo_transaction_id;
+            END IF;
+        END
+        $$;
+        """
     )
     op.alter_column("location", "county", new_column_name="province")
     op.alter_column("location", "sub_county", new_column_name="district")

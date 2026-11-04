@@ -20,7 +20,6 @@ class MpesaSettings(BaseSettings):
 
     simulator_delay_seconds: float = Field(default=5.0, ge=0)
 
-  
     base_url: str | None = None
 
     currency: str = "KES"
@@ -33,18 +32,13 @@ class MpesaSettings(BaseSettings):
 
     callback_secret: SecretStr = SecretStr("")
 
-    
+    b2c_shortcode: str = ""
+    initiator_name: str = ""
+    security_credential: SecretStr = SecretStr("")
+
     callback_base_url: str = ""
 
-    # ---------------------------------------------------------
-    # HTTP configuration
-    # ---------------------------------------------------------
-
     http_timeout_seconds: float = Field(default=30.0, gt=0)
-
-    # ---------------------------------------------------------
-    # Payment attempt limits
-    # ---------------------------------------------------------
 
     max_attempts_per_enquiry: int = Field(default=5, ge=1)
 
@@ -56,19 +50,11 @@ class MpesaSettings(BaseSettings):
 
     status_poll_min_interval_seconds: int = Field(default=5, ge=1)
 
-    # ---------------------------------------------------------
-    # Payout configuration
-    # ---------------------------------------------------------
-
     payout_trigger: Literal["ON_COMPLETED", "ON_PAID"] = "ON_COMPLETED"
 
     auto_release_days: int = Field(default=7, ge=1, le=60)
 
     auto_payout: bool = True
-
-    # ---------------------------------------------------------
-    # Platform fees
-    # ---------------------------------------------------------
 
     huza_fee_percent: Decimal = Field(
         default=Decimal("0"),
@@ -76,29 +62,13 @@ class MpesaSettings(BaseSettings):
         le=50,
     )
 
-    # ---------------------------------------------------------
-    # Buyer verification
-    # ---------------------------------------------------------
-
     require_registered_payer_phone: bool = True
 
-    # ---------------------------------------------------------
-    # Seller payout security
-    # ---------------------------------------------------------
-
     payout_change_hold_hours: int = Field(default=24, ge=0, le=720)
-
-    # ---------------------------------------------------------
-    # Payment conflict handling
-    # ---------------------------------------------------------
 
     auto_refund_on_conflict: bool = True
 
     stale_pending_review_hours: int = Field(default=24, ge=1)
-
-    # ---------------------------------------------------------
-    # Compatibility properties
-    # ---------------------------------------------------------
 
     @property
     def shortcode(self) -> str:
@@ -116,14 +86,9 @@ class MpesaSettings(BaseSettings):
     def transaction_type(self) -> str:
         return "CustomerPayBillOnline"
 
-    # ---------------------------------------------------------
-    # Configuration validation
-    # ---------------------------------------------------------
-
     @model_validator(mode="after")
     def validate_mpesa_settings(self) -> "MpesaSettings":
 
-       
         expected_base_url = (
             "https://api.safaricom.co.ke"
             if self.environment == "production"

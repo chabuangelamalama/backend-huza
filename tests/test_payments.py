@@ -1,5 +1,7 @@
 """Payment service tests against the Postgres test DB (skipped if it is not running)."""
 
+import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -7,11 +9,12 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from core.payment_config import MpesaSettings
-from models import PaymentEvent
+from models import Payment, PaymentEvent
 from models.business import ApprovalStatus, BusinessRole, PayoutNetwork
 from models.enquiry import EnquiryStatus
-from models.payment import PaymentStatus
+from models.payment import PaymentStatus, PayoutStatus
 from models.user import UserRole
+from repositories import payment_repository as repo
 from services.mpesa import MpesaRejected, MpesaResult, MpesaTransient
 from services.payment_service import PaymentService
 from tests.test_models import (
@@ -182,7 +185,6 @@ def event_types(session, payment_id):
     return list(rows)
 
 
-# ================================================================ initiate
 def test_buyer_starts_payment_with_amount_from_enquiry(svc, world, mpesa):
     p = pay(svc, world)
     assert p.status == PaymentStatus.PENDING and p.amount == Decimal("5000")
@@ -260,7 +262,6 @@ def test_attempt_cap_per_enquiry(svc, world, mpesa):
     assert e.value.status_code == 429
 
 
-# ============================================================== settlement
 def test_success_pays_enquiry_and_takes_stock_but_holds_the_payout(
     svc, world, mpesa, session
 ):
@@ -268,3 +269,88 @@ def test_success_pays_enquiry_and_takes_stock_but_holds_the_payout(
     session.refresh(world["enquiry"])
     session.refresh(world["listing"])
     assert p.status == PaymentStatus.SUCCESSFUL
+
+
+def _payment_row(session, enquiry, status, minutes_ago):
+    row = Payment(
+        enquiry_id=enquiry.enquiry_id,
+        amount=enquiry.total_amount,
+        phone_number=PAYER,
+        reference_id=str(uuid.uuid4()),
+        status=status,
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=minutes_ago),
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def test_enquiry_lookup_prefers_the_successful_payment(session, world):
+    enquiry = world["enquiry"]
+    assert repo.get_payment_by_enquiry_id(session, enquiry.enquiry_id) is None
+
+    failed = _payment_row(session, enquiry, PaymentStatus.FAILED, 30)
+    assert repo.get_payment_by_enquiry_id(session, enquiry.enquiry_id) is failed
+
+    successful = _payment_row(session, enquiry, PaymentStatus.SUCCESSFUL, 20)
+    _payment_row(session, enquiry, PaymentStatus.FAILED, 10)
+    assert repo.get_payment_by_enquiry_id(session, enquiry.enquiry_id) is successful
+
+
+def test_enquiry_lookup_returns_the_latest_attempt_without_a_success(session, world):
+    enquiry = world["enquiry"]
+    _payment_row(session, enquiry, PaymentStatus.FAILED, 30)
+    latest = _payment_row(session, enquiry, PaymentStatus.PENDING, 5)
+    assert repo.get_payment_by_enquiry_id(session, enquiry.enquiry_id) is latest
+
+
+def test_attempts_are_counted_per_payer_phone(session, world):
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    _payment_row(session, world["enquiry"], PaymentStatus.FAILED, 10)
+    _payment_row(session, world["enquiry"], PaymentStatus.FAILED, 120)
+    assert repo.count_attempts_by_phone_since(session, PAYER, since) == 1
+    assert repo.count_attempts_by_phone_since(session, "254799999999", since) == 0
+
+
+def test_parties_read_the_payment_of_an_enquiry(svc, world):
+    p = pay(svc, world)
+    enquiry_id = world["enquiry"].enquiry_id
+    for who, side in (("buyer", "buyer"), ("seller", "seller"), ("admin", "admin")):
+        found, seen_as = svc.get_payment_for_enquiry(world[who], enquiry_id)
+        assert found.payment_id == p.payment_id and seen_as == side
+    with pytest.raises(HTTPException) as e:
+        svc.get_payment_for_enquiry(world["other"], enquiry_id)
+    assert e.value.status_code == 404
+
+
+def test_reading_an_enquiry_without_payments_is_not_found(svc, world):
+    with pytest.raises(HTTPException) as e:
+        svc.get_payment_for_enquiry(world["buyer"], world["enquiry"].enquiry_id)
+    assert code(e) == "not_found"
+
+
+def test_buyer_confirms_receipt_after_a_successful_payment(svc, world, mpesa):
+    p = paid(svc, world, mpesa)
+    assert p.status == PaymentStatus.SUCCESSFUL
+    confirmed = svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+    assert confirmed.payment_id == p.payment_id
+    assert confirmed.payout_status == PayoutStatus.PENDING
+
+
+def test_receipt_cannot_be_confirmed_before_payment_succeeds(svc, world):
+    enquiry_id = world["enquiry"].enquiry_id
+    with pytest.raises(HTTPException) as e:
+        svc.confirm_receipt(world["buyer"], enquiry_id)
+    assert e.value.status_code == 404
+    pay(svc, world)
+    with pytest.raises(HTTPException) as e:
+        svc.confirm_receipt(world["buyer"], enquiry_id)
+    assert code(e) == "payment_not_successful"
+
+
+def test_only_the_buyer_confirms_receipt(svc, world, mpesa):
+    paid(svc, world, mpesa)
+    for who in ("seller", "other"):
+        with pytest.raises(HTTPException) as e:
+            svc.confirm_receipt(world[who], world["enquiry"].enquiry_id)
+        assert e.value.status_code == 404

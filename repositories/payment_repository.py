@@ -62,6 +62,19 @@ def payments_for_enquiry(db: Session, enquiry_id: UUID) -> list[Payment]:
     return list(db.execute(stmt).scalars())
 
 
+def get_payment_by_enquiry_id(db: Session, enquiry_id: UUID) -> Payment | None:
+    successful = successful_payment_for_enquiry(db, enquiry_id)
+    if successful is not None:
+        return successful
+    stmt = (
+        select(Payment)
+        .where(Payment.enquiry_id == enquiry_id)
+        .order_by(Payment.created_at.desc())
+        .limit(1)
+    )
+    return db.execute(stmt).scalars().first()
+
+
 def pending_for_enquiry(db: Session, enquiry_id: UUID) -> list[Payment]:
     stmt = select(Payment).where(
         Payment.enquiry_id == enquiry_id, Payment.status == PaymentStatus.PENDING
@@ -101,7 +114,7 @@ def count_attempts_by_phone_since(db: Session, phone: str, since: datetime) -> i
     stmt = (
         select(func.count())
         .select_from(Payment)
-        .where(Payment.payer_phone == phone, Payment.created_at >= since)
+        .where(Payment.phone_number == phone, Payment.created_at >= since)
     )
     return db.execute(stmt).scalar_one()
 

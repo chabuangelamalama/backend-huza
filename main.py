@@ -28,17 +28,11 @@ else:
     cors_options = {"allow_origin_regex": r"https?://(localhost|127\.0\.0\.1)(:\d+)?"}
 
 app.add_middleware(
-
     CORSMiddleware,
-
-allow_origins=["*"],
-
-allow_methods=["*"],
-
-allow_headers=["*"],
-
-expose_headers=["Retry-After"],
-
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Retry-After"],
 )
 
 
@@ -49,7 +43,6 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
         content={"detail": exc.detail},
         headers=exc.headers,
     )
-
 
 
 app.include_router(auth.router)

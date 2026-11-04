@@ -1,8 +1,12 @@
+import json
 from decimal import Decimal
+
 import httpx
 import pytest
 
 from core.payment_config import MpesaSettings
+from models.business import PayoutNetwork
+from routers.payments import PayoutDetailsRequest
 from schemas.payment import InitiatePaymentRequest, normalize_msisdn
 from services.money import compute_total, split_fee, whole_kes
 from services.mpesa import (
@@ -37,12 +41,12 @@ def settings(**kw) -> MpesaSettings:
 
 def client_for(handler) -> MpesaClient:
     http = httpx.Client(
-        base_url="https://sandbox.safaricom.co.ke", transport=httpx.MockTransport(handler)
+        base_url="https://sandbox.safaricom.co.ke",
+        transport=httpx.MockTransport(handler),
     )
     return MpesaClient(settings(), http)
 
 
-# ------------------------------------------------------------------ money
 def test_total_is_rounded_half_up_to_whole_kes():
     assert compute_total(Decimal("2.5"), Decimal("33.3333")) == Decimal("83")
     assert compute_total(Decimal("100"), Decimal("50")) == Decimal("5000")
@@ -66,7 +70,6 @@ def test_fractional_kes_is_refused():
         to_mpesa_amount(Decimal("0"))
 
 
-# ------------------------------------------------------------------ phones
 @pytest.mark.parametrize(
     "raw", ["0712345678", "+254 712 345 678", "254712345678", "712345678"]
 )
@@ -85,13 +88,11 @@ def test_unknown_request_fields_are_rejected():
         InitiatePaymentRequest(phone_number="0712345678", amount=1)
 
 
-# ---------------------------------------------------------------- settings
 def test_production_settings_are_strict():
     with pytest.raises(ValueError):
         MpesaSettings(environment="production")
 
 
-# ---------------------------------------------------------- callback tokens
 def test_callback_token_is_bound_to_kind_and_reference():
     t = callback_token(SECRET, "collection", REF)
     assert verify_callback_token(SECRET, "collection", REF, t)
@@ -100,7 +101,6 @@ def test_callback_token_is_bound_to_kind_and_reference():
     assert not verify_callback_token("", "collection", REF, t)
 
 
-# ---------------------------------------------------------- M-Pesa HTTP client
 def test_request_to_pay_sends_what_mpesa_expects_and_caches_the_token():
     seen = {"token_calls": 0, "pay": None}
 
@@ -223,3 +223,84 @@ def test_status_read_parses_success_and_handles_404():
     assert "cancelled" in failed.reason
 
     assert make(httpx.Response(404)).get_request_to_pay(CHECKOUT_ID) is None
+
+
+B2C = dict(
+    b2c_shortcode="600999",
+    initiator_name="huza-initiator",
+    security_credential="encrypted-credential",
+)
+
+
+def _b2c_client(handler, **overrides) -> MpesaClient:
+    http = httpx.Client(
+        base_url="https://sandbox.safaricom.co.ke",
+        transport=httpx.MockTransport(handler),
+    )
+    return MpesaClient(settings(**{**B2C, **overrides}), http)
+
+
+def _transfer(c):
+    return c.transfer(
+        reference_id=REF,
+        amount=Decimal("4750"),
+        phone_number="254712000111",
+        remarks="Payout 11111111",
+    )
+
+
+def test_transfer_sends_the_configured_b2c_credentials():
+    seen = {}
+
+    def handler(request):
+        if request.url.path.endswith("/generate"):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200, json={"ResponseCode": "0", "ConversationID": "AG_2026_conv"}
+        )
+
+    assert _transfer(_b2c_client(handler)) == "AG_2026_conv"
+    body = seen["body"]
+    assert body["InitiatorName"] == "huza-initiator"
+    assert body["SecurityCredential"] == "encrypted-credential"
+    assert body["PartyA"] == "600999"
+    assert body["PartyB"] == "254712000111"
+    assert body["Amount"] == "4750"
+    assert body["ResultURL"] == body["QueueTimeOutURL"]
+    assert body["ResultURL"].startswith(
+        f"https://api.huza.ke/payments/mpesa/callback/disbursement/{REF}/"
+    )
+
+
+@pytest.mark.parametrize("missing", sorted(B2C))
+def test_transfer_without_b2c_settings_is_rejected_before_calling_daraja(missing):
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+
+    with pytest.raises(MpesaRejected) as e:
+        _transfer(_b2c_client(handler, **{missing: ""}))
+    assert f"MPESA_{missing.upper()}" in str(e.value)
+    assert "/mpesa/b2c/v1/paymentrequest" not in calls
+
+
+def test_transfer_rejection_carries_the_daraja_reason():
+    def handler(request):
+        if request.url.path.endswith("/generate"):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        return httpx.Response(400, json={"errorMessage": "Invalid Initiator"})
+
+    with pytest.raises(MpesaRejected) as e:
+        _transfer(_b2c_client(handler))
+    assert "Invalid Initiator" in str(e.value)
+
+
+def test_payout_details_default_to_mpesa_and_reject_other_networks():
+    body = PayoutDetailsRequest(payout_phone="0712345678")
+    assert body.payout_phone == "254712345678"
+    assert body.payout_network == PayoutNetwork.MPESA
+    with pytest.raises(ValueError):
+        PayoutDetailsRequest(payout_phone="0712345678", payout_network="AIRTEL")

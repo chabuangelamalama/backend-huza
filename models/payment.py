@@ -63,15 +63,15 @@ class Payment(TimestampMixin, Base):
         server_default=text("'PENDING'"),
     )
     mpesa_checkout_request_id = Column(
-    String(100),
-    nullable=True,
-    unique=True,
-)
+        String(100),
+        nullable=True,
+        unique=True,
+    )
 
     mpesa_merchant_request_id = Column(
-    String(100),
-    nullable=True,
-)
+        String(100),
+        nullable=True,
+    )
     failure_reason = Column(Text, nullable=True)
     payout_status = Column(
         payout_status_t,

@@ -25,6 +25,44 @@ TEST_DATABASE_URL = os.getenv(
 )
 
 
+class FakeMailer:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, message):
+        self.sent.append(message)
+
+
+@pytest.fixture
+def mailer():
+    return FakeMailer()
+
+
+@pytest.fixture
+def client(session, mailer):
+    from fastapi.testclient import TestClient
+
+    from core.config import Settings, get_settings
+    from core.dependencies import get_mailer
+    from database import get_db
+    from main import app
+
+    settings = Settings(
+        _env_file=None,
+        database_url="sqlite://",
+        jwt_secret="test-secret-that-is-at-least-32-characters-long",
+        max_failed_logins=3,
+        lockout_minutes=15,
+        environment="test",
+    )
+    app.dependency_overrides[get_db] = lambda: session
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_mailer] = lambda: mailer
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
 @pytest.fixture(scope="session")
 def engine():
     engine = create_engine(TEST_DATABASE_URL)

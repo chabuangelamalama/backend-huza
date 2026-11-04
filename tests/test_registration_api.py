@@ -9,9 +9,7 @@ from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
-from starlette.testclient import TestClient
 
-from main import app
 from models import Location, User
 from models.business import ApprovalStatus
 from schemas.registration import RegisterRequest
@@ -19,15 +17,9 @@ from services.registration_service import manual_osm_id
 from .test_auth_api import (
     PASSWORD,
     auth_header,
-    mailer,
     make_admin,
     sign_in,
 )
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
 
 
 def payload(**changes) -> dict:
@@ -36,7 +28,7 @@ def payload(**changes) -> dict:
         "first_name": "Aline",
         "last_name": "Uwase",
         "email": f"aline_{unique_id}@inzozi.rw",
-        "phone": "+250788340221",
+        "phone": "+254788340221",
         "password": PASSWORD,
         "business_role": "SUPPLIER",
         "business": {
@@ -47,11 +39,11 @@ def payload(**changes) -> dict:
         },
         "location": {
             "name": "Remera Market",
-            "display_name": "Remera Market, Gasabo, Kigali City, Rwanda",
-            "latitude": -1.9577,
-            "longitude": 30.1127,
-            "district": "Gasabo",
-            "province": "Kigali City",
+            "display_name": "Remera Market, Nairobi, Kenya",
+            "latitude": -1.286389,
+            "longitude": 36.817223,
+            "sub_county": "Starehe",
+            "county": "Nairobi County",
         },
     }
     body.update(changes)
@@ -90,16 +82,11 @@ def test_the_request_rules_match_the_database_rules():
 
 
 def test_a_manual_place_gets_the_same_negative_id_every_time():
-    a = manual_osm_id(Decimal("-1.957700"), Decimal("30.112700"))
-    b = manual_osm_id(Decimal("-1.957700"), Decimal("30.112700"))
-    c = manual_osm_id(Decimal("-1.957800"), Decimal("30.112700"))
+    a = manual_osm_id(Decimal("-1.286389"), Decimal("36.817223"))
+    b = manual_osm_id(Decimal("-1.286389"), Decimal("36.817223"))
+    c = manual_osm_id(Decimal("-1.286400"), Decimal("36.817223"))
     assert a == b < 0
     assert a != c
-
-
-# --------------------------------------------------------------------------- #
-# Register
-# --------------------------------------------------------------------------- #
 
 
 def test_register_creates_a_pending_business_and_signs_the_user_in(
@@ -142,22 +129,17 @@ def test_two_businesses_in_the_same_place_share_one_location(client, session):
     unique_place = f"Place_{uuid.uuid4().hex[:6]}"
     loc = {
         "name": unique_place,
-        "display_name": f"{unique_place}, Kigali, Rwanda",
-        "latitude": -1.9577,
-        "longitude": 30.1127,
-        "district": "Gasabo",
-        "province": "Kigali City",
+        "display_name": f"{unique_place}, Nairobi, Kenya",
+        "latitude": -1.286389,
+        "longitude": 36.817223,
+        "sub_county": "Starehe",
+        "county": "Nairobi County",
     }
     register(client, location=loc)
     register(client, location=loc)
 
     places = session.query(Location).filter(Location.name == unique_place).all()
     assert len(places) == 1
-
-
-# --------------------------------------------------------------------------- #
-# Email verification
-# --------------------------------------------------------------------------- #
 
 
 def test_verify_email_with_the_emailed_code(client, session, mailer):
@@ -222,11 +204,6 @@ def test_resend_does_nothing_once_verified(client, session, mailer):
     assert len(mailer.sent) == sent_before
 
 
-# --------------------------------------------------------------------------- #
-# Business details
-# --------------------------------------------------------------------------- #
-
-
 def business_of(session, response) -> User:
     return session.get(User, uuid.UUID(response.json()["user"]["id"]))
 
@@ -238,7 +215,7 @@ def test_a_pending_business_can_be_read_and_edited(client, session):
     shown = client.get("/business/me", headers=headers)
     assert shown.status_code == 200
     assert shown.json()["business_legal_name"] == "Inzozi Ltd"
-    assert shown.json()["location"]["district"] == "Gasabo"
+    assert shown.json()["location"]["sub_county"] == "Starehe"
 
     edited = client.patch(
         "/business/me",

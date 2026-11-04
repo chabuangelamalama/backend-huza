@@ -298,25 +298,21 @@ class MpesaClient:
             "Content-Type": "application/json",
         }
 
-        sec_cred = getattr(self.s, "security_credential", None)
-        if hasattr(sec_cred, "get_secret_value"):
-            sec_cred_val = sec_cred.get_secret_value()
-        elif sec_cred:
-            sec_cred_val = str(sec_cred)
-        else:
-            sec_cred_val = "test"
+        sec_cred_val = self.s.security_credential.get_secret_value()
+        party_a = self.s.b2c_shortcode
+        initiator_name = self.s.initiator_name
 
-        party_a = (
-            getattr(self.s, "b2c_shortcode", None)
-            or getattr(self.s, "shortcode", None)
-            or "600984"
-        )
-
-        initiator_name = (
-            getattr(self.s, "initiator_name", None)
-            or getattr(self.s, "b2c_initiator_name", None)
-            or "testapi"
-        )
+        missing = [
+            name
+            for name, value in (
+                ("MPESA_B2C_SHORTCODE", party_a),
+                ("MPESA_INITIATOR_NAME", initiator_name),
+                ("MPESA_SECURITY_CREDENTIAL", sec_cred_val),
+            )
+            if not value
+        ]
+        if missing:
+            raise MpesaRejected("B2C payouts are not configured: " + ", ".join(missing))
 
         payload = {
             "InitiatorName": initiator_name,

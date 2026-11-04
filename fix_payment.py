@@ -9,11 +9,12 @@
                          new tests cover every new rule.
 Safe to run twice.
 """
+
 from pathlib import Path
 
 ROOT = Path(__file__).parent
 
-MODEL = '''from sqlalchemy import (
+MODEL = """from sqlalchemy import (
     Column,
     CheckConstraint,
     ForeignKey,
@@ -120,7 +121,7 @@ class Payment(TimestampMixin, Base):
     )
 
     enquiry = relationship("Enquiry", back_populates="payments")
-'''
+"""
 
 MIGRATION = '''"""payment integrity: consistent names, state rules, unique momo id
 
@@ -207,7 +208,7 @@ def downgrade() -> None:
         op.execute(f"ALTER TABLE payment RENAME CONSTRAINT {new} TO {old}")
 '''
 
-OLD_HELPER = '''def make_payment(session, enquiry, **changes):
+OLD_HELPER = """def make_payment(session, enquiry, **changes):
     values = dict(
         enquiry_id=enquiry.enquiry_id,
         amount=Decimal("5000"),
@@ -215,8 +216,8 @@ OLD_HELPER = '''def make_payment(session, enquiry, **changes):
         reference_id=uuid.uuid4().hex,
     )
     values.update(changes)
-'''
-NEW_HELPER = '''def make_payment(session, enquiry, **changes):
+"""
+NEW_HELPER = """def make_payment(session, enquiry, **changes):
     values = dict(
         enquiry_id=enquiry.enquiry_id,
         amount=Decimal("5000"),
@@ -229,9 +230,9 @@ NEW_HELPER = '''def make_payment(session, enquiry, **changes):
         values.setdefault("paid_at", now)
     if values.get("payout_status") == PayoutStatus.PAID:
         values.setdefault("paid_out_at", now)
-'''
+"""
 
-NEW_TESTS = '''
+NEW_TESTS = """
 
 # --- payment integrity rules ---
 def test_payment_phone_cannot_be_blank(session):
@@ -337,7 +338,7 @@ def test_enquiry_with_payments_cannot_be_deleted(session):
     session.delete(session.get(Enquiry, enquiry.enquiry_id))
     with pytest.raises((IntegrityError, AssertionError)):
         session.flush()
-'''
+"""
 
 
 def find_head():
@@ -358,7 +359,6 @@ def find_head():
     heads = [r for r in revs if r not in downs]
     assert len(heads) == 1, f"expected one alembic head, found {heads}"
     return heads[0]
-
 
 
 INTEGRITY_TESTS = """\

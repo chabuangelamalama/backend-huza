@@ -54,10 +54,6 @@ class RegistrationService:
         self.users = users
         self.settings = settings
 
-    # ------------------------------------------------------------------ #
-    # Register
-    # ------------------------------------------------------------------ #
-
     def register(self, data: RegisterRequest) -> tuple[User, OutgoingEmail | None]:
         """Creates the location, the PENDING business and the user in one go."""
         email = normalize_email(data.email)
@@ -112,10 +108,6 @@ class RegistrationService:
             return user, None
         return user, build_verification_code_email(user, code, self.settings)
 
-    # ------------------------------------------------------------------ #
-    # Email verification
-    # ------------------------------------------------------------------ #
-
     def send_verification(self, user: User) -> OutgoingEmail | None:
         """New code for the signed-in user. None when already verified."""
         if user.email_verified_at is not None:
@@ -146,10 +138,6 @@ class RegistrationService:
         user.verify_code_hash = None
         user.verify_code_expires_at = None
         self.users.commit()
-
-    # ------------------------------------------------------------------ #
-    # Business details
-    # ------------------------------------------------------------------ #
 
     def get_business(self, user: User) -> Business:
         if user.business is None:
@@ -193,10 +181,6 @@ class RegistrationService:
         self.users.commit()
         return business
 
-    # ------------------------------------------------------------------ #
-    # Internals
-    # ------------------------------------------------------------------ #
-
     def _location_for(self, place: LocationIn) -> Location:
         latitude = Decimal(str(place.latitude)).quantize(SIX_DP)
         longitude = Decimal(str(place.longitude)).quantize(SIX_DP)
@@ -216,10 +200,8 @@ class RegistrationService:
             display_name=place.display_name or place.name,
             latitude=latitude,
             longitude=longitude,
-            sub_county=place.district,
-            county=place.province,
-
-
+            sub_county=place.sub_county,
+            county=place.county,
         )
         self.users.add(location)
         self.users.flush()

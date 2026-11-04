@@ -15,7 +15,7 @@ from models import Notification, Payment, PaymentEvent
 from models.business import ApprovalStatus
 from models.enquiry import EnquiryStatus
 from models.notification import NotificationEvent
-from models.payment import PaymentStatus, PayoutStatus, RefundStatus
+from models.payment import PaymentStatus, PayoutStatus
 from models.user import User, UserRole
 from repositories import payment_repository as repo
 from schemas.payment import normalize_msisdn, safe_reason
@@ -76,10 +76,6 @@ class PaymentService:
         self.mpesa = mpesa
         self.s = settings
 
-    # ------------------------------------------------------------------
-    # Authorization
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _side(actor: User, enquiry) -> str | None:
         if enquiry is None:
@@ -118,10 +114,6 @@ class PaymentService:
                 "forbidden",
                 "Administrators only",
             )
-
-    # ------------------------------------------------------------------
-    # Audit events and notifications
-    # ------------------------------------------------------------------
 
     def _event(
         self,
@@ -170,10 +162,6 @@ class PaymentService:
             payment_id=payment.payment_id,
             reason=reason,
         )
-
-    # ------------------------------------------------------------------
-    # Buyer: initiate payment
-    # ------------------------------------------------------------------
 
     def initiate_payment(
         self,
@@ -350,10 +338,6 @@ class PaymentService:
                 "Too many payment attempts for this enquiry",
             )
 
-    # ------------------------------------------------------------------
-    # Safaricom STK Push
-    # ------------------------------------------------------------------
-
     def _send_request_to_pay(
         self,
         payment_id: UUID,
@@ -418,10 +402,6 @@ class PaymentService:
             )
             self.db.commit()
 
-    # ------------------------------------------------------------------
-    # Settlement helper (shared by callback and status query reconciliation)
-    # ------------------------------------------------------------------
-
     def _settle_successful_payment(
         self,
         payment: Payment,
@@ -469,10 +449,6 @@ class PaymentService:
                     payment.stock_deducted = True
 
         self.db.commit()
-
-    # ------------------------------------------------------------------
-    # Reconciliation
-    # ------------------------------------------------------------------
 
     def reconcile_payment(
         self,
@@ -530,10 +506,6 @@ class PaymentService:
             )
             return payment
 
-    # ------------------------------------------------------------------
-    # Daraja callback helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _callback_metadata(callback: dict) -> dict:
         metadata = callback.get("CallbackMetadata") or {}
@@ -544,10 +516,6 @@ class PaymentService:
             if name:
                 extracted[name] = item.get("Value")
         return extracted
-
-    # ------------------------------------------------------------------
-    # Daraja callback handlers
-    # ------------------------------------------------------------------
 
     def _handle_disbursement_callback(
         self,
@@ -678,9 +646,7 @@ class PaymentService:
         payload = payload or {}
 
         if kind == "disbursement":
-            return self._handle_disbursement_callback(
-                reference_id, token, payload
-            )
+            return self._handle_disbursement_callback(reference_id, token, payload)
 
         if kind != "collection":
             raise PaymentError(
@@ -724,7 +690,6 @@ class PaymentService:
         if payment is None:
             raise PaymentError(404, *_NOT_FOUND)
 
-        # Reachability/health-check ping with empty body: token is verified and payment exists
         if not payload:
             return
 
@@ -751,9 +716,7 @@ class PaymentService:
         if merchant_request_id:
             payment.mpesa_merchant_request_id = str(merchant_request_id)
 
-        stored_checkout_id = getattr(
-            payment, "mpesa_checkout_request_id", None
-        )
+        stored_checkout_id = getattr(payment, "mpesa_checkout_request_id", None)
         if not stored_checkout_id:
             payment.mpesa_checkout_request_id = str(checkout_request_id)
             stored_checkout_id = str(checkout_request_id)
@@ -870,10 +833,6 @@ class PaymentService:
             receipt,
         )
 
-    # ------------------------------------------------------------------
-    # Seller payout details
-    # ------------------------------------------------------------------
-
     def get_payout_details(
         self,
         actor: User,
@@ -922,10 +881,6 @@ class PaymentService:
             "payout_phone": _mask(normalized),
             "payout_network": getattr(business, "payout_network", None),
         }
-
-    # ------------------------------------------------------------------
-    # Payment reads
-    # ------------------------------------------------------------------
 
     def get_payment_for_actor(
         self,
@@ -1017,10 +972,6 @@ class PaymentService:
         self.db.commit()
         return payment
 
-    # ------------------------------------------------------------------
-    # Admin actions
-    # ------------------------------------------------------------------
-
     def admin_list(
         self,
         actor: User,
@@ -1069,10 +1020,6 @@ class PaymentService:
         if not payment:
             raise PaymentError(404, *_NOT_FOUND)
         return repo.list_payment_events(self.db, payment_id)
-
-    # ------------------------------------------------------------------
-    # Refunds and payouts
-    # ------------------------------------------------------------------
 
     def refund_payment(
         self,
@@ -1152,6 +1099,8 @@ class PaymentService:
             payment.payout_failure_reason = str(e.reason or e)[:100]
             self.db.commit()
             raise PaymentError(400, "payout_rejected", str(e.reason or e))
-        except MpesaTransient as e:
+        except MpesaTransient:
             self.db.rollback()
-            raise PaymentError(503, "mpesa_unavailable", "Safaricom service unavailable")
+            raise PaymentError(
+                503, "mpesa_unavailable", "Safaricom service unavailable"
+            )

@@ -2,10 +2,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from core.payment_deps import get_current_user, get_db, get_settings
+from core.payment_deps import get_current_user, get_db, get_mpesa_client, get_settings
 from routers.payments import router
 from services.mpesa import callback_token
-from tests.test_payments import PAYER, make_settings, SECRET
+from tests.test_payments import PAYER, SECRET, FakeMpesa, make_settings
 
 
 @pytest.fixture
@@ -14,6 +14,8 @@ def api(session, world):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_db] = lambda: session
+    fake_mpesa = FakeMpesa()
+    app.dependency_overrides[get_mpesa_client] = lambda: fake_mpesa
 
     app.dependency_overrides[get_settings] = lambda: make_settings(
         mode="simulated", simulator_delay_seconds=3600
@@ -132,3 +134,61 @@ def test_callback_is_accessible_and_needs_no_login(api):
     url = f"/payments/mpesa/callback/collection/{reference}/{token}"
     assert client.put(url).status_code == 200
     assert client.post(url).status_code == 200
+
+
+def test_parties_read_the_payment_of_an_enquiry(api):
+    client, _, w = api
+    url = f"/enquiries/{w['enquiry'].enquiry_id}/payments"
+    assert as_user(api, "buyer").get(url).status_code == 404
+    pid = start(api).json()["payment_id"]
+    buyer = as_user(api, "buyer").get(url)
+    assert buyer.status_code == 200 and buyer.json()["payment_id"] == pid
+    assert buyer.json()["phone_number"] == "254****678"
+    assert buyer.headers["cache-control"] == "no-store"
+    seller = as_user(api, "seller").get(url).json()
+    assert seller["payment_id"] == pid and "phone_number" not in seller
+    assert as_user(api, "other").get(url).status_code == 404
+
+
+def test_receipt_cannot_be_confirmed_for_a_pending_payment(api):
+    client, _, w = api
+    start(api)
+    r = as_user(api, "buyer").post(
+        f"/enquiries/{w['enquiry'].enquiry_id}/confirm-receipt"
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "payment_not_successful"
+
+
+def test_admin_events_are_returned_as_json(api):
+    pid = start(api).json()["payment_id"]
+    events = as_user(api, "admin").get(f"/admin/payments/{pid}/events").json()
+    assert [e["event_type"] for e in events] == [
+        "PAYMENT_CREATED",
+        "STK_PUSH_REQUESTED",
+    ]
+    first = events[0]
+    assert first["payment_id"] == pid
+    assert set(first) == {
+        "event_id",
+        "payment_id",
+        "business_id",
+        "actor_user_id",
+        "event_type",
+        "detail",
+        "created_at",
+    }
+
+
+def test_payout_details_reject_an_unknown_network(api):
+    seller = as_user(api, "seller")
+    r = seller.put(
+        "/payments/payout-details",
+        json={"payout_phone": "0712999000", "payout_network": "AIRTEL"},
+    )
+    assert r.status_code == 422
+    r = seller.put(
+        "/payments/payout-details",
+        json={"payout_phone": "0712999000", "payout_network": "MPESA"},
+    )
+    assert r.status_code == 200 and r.json()["payout_network"] == "MPESA"

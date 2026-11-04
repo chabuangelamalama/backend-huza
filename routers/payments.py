@@ -1,4 +1,3 @@
-
 """Payment endpoints (buyer, seller, M-Pesa callback, admin)."""
 
 import json
@@ -22,10 +21,10 @@ from core.payment_deps import (
     get_mpesa_client,
     get_settings,
 )
-from models.business import BusinessRole
+from models.business import BusinessRole, PayoutNetwork
 from models.payment import Payment
 from models.user import User
-from schemas.payment import normalize_msisdn
+from schemas.payment import PaymentEventOut, normalize_msisdn
 from services.mpesa import MpesaGateway
 from services.payment_service import PaymentService
 
@@ -53,7 +52,7 @@ class PayoutDetailsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     payout_phone: str = Field(min_length=9, max_length=20)
-    payout_network: str | None = None
+    payout_network: PayoutNetwork = PayoutNetwork.MPESA
 
     @field_validator("payout_phone")
     @classmethod
@@ -69,10 +68,6 @@ class RefundRequest(BaseModel):
     failure_reason: str | None = None
 
 
-# ---------------------------------------------------------
-# Service dependency
-# ---------------------------------------------------------
-
 def get_service(
     db: Session = Depends(get_db),
     mpesa: MpesaGateway = Depends(get_mpesa_client),
@@ -80,10 +75,6 @@ def get_service(
 ) -> PaymentService:
     return PaymentService(db, mpesa, settings)
 
-
-# ---------------------------------------------------------
-# Response helpers
-# ---------------------------------------------------------
 
 def _mask_phone(phone: str | None) -> str | None:
     if not phone:
@@ -115,23 +106,15 @@ def _view(payment: Payment, side: str) -> dict:
     data = {
         "payment_id": str(payment.payment_id),
         "enquiry_id": str(payment.enquiry_id),
-        "amount": (
-            float(payment.amount)
-            if payment.amount is not None
-            else 0.0
-        ),
+        "amount": (float(payment.amount) if payment.amount is not None else 0.0),
         "status": status_str,
         "payout_status": payout_status_str,
     }
 
     if side == "buyer":
-        data["phone_number"] = _mask_phone(
-            payment.phone_number
-        )
+        data["phone_number"] = _mask_phone(payment.phone_number)
 
     elif side == "seller":
-
-      
         pass
 
     elif side == "admin":
@@ -155,10 +138,6 @@ def _view(payment: Payment, side: str) -> dict:
 
     return data
 
-
-# ---------------------------------------------------------
-# Buyer endpoints
-# ---------------------------------------------------------
 
 @router.post(
     "/enquiries/{enquiry_id}/payments",
@@ -203,10 +182,6 @@ def confirm_receipt(
     return _view(payment, "buyer")
 
 
-# ---------------------------------------------------------
-# Seller payout details
-# ---------------------------------------------------------
-
 @router.get("/payments/payout-details")
 def get_payout_details(
     response: Response,
@@ -233,10 +208,6 @@ def set_payout_details(
         body.payout_network,
     )
 
-
-# ---------------------------------------------------------
-# M-Pesa Daraja callback
-# ---------------------------------------------------------
 
 @router.api_route(
     "/payments/mpesa/callback/{kind}/{reference_id}/{token}",
@@ -270,15 +241,10 @@ async def mpesa_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    
     svc.handle_callback(kind, reference_id, token, payload)
 
     return Response(status_code=status.HTTP_200_OK)
 
-
-# ---------------------------------------------------------
-# Admin endpoints
-# ---------------------------------------------------------
 
 @router.get("/admin/payments")
 def admin_list_payments(
@@ -302,10 +268,7 @@ def admin_list_payments(
         offset,
     )
 
-    return [
-        _view(payment, "admin")
-        for payment in rows
-    ]
+    return [_view(payment, "admin") for payment in rows]
 
 
 @router.post("/admin/payments/sweep")
@@ -341,10 +304,10 @@ def admin_events(
     user: User = Depends(get_current_user),
     svc: PaymentService = Depends(get_service),
 ):
-    return svc.admin_events(
-        user,
-        payment_id,
-    )
+    return [
+        PaymentEventOut.model_validate(event)
+        for event in svc.admin_events(user, payment_id)
+    ]
 
 
 @router.post("/admin/payments/{payment_id}/refund")
@@ -377,10 +340,6 @@ def admin_payout(
     return _view(payment, "admin")
 
 
-# ---------------------------------------------------------
-# Shared payment reads
-# ---------------------------------------------------------
-
 @router.get("/payments")
 def my_payments(
     response: Response,
@@ -403,8 +362,7 @@ def my_payments(
         business = user.business
 
         is_supplier = (
-            business is not None
-            and business.business_role == BusinessRole.SUPPLIER
+            business is not None and business.business_role == BusinessRole.SUPPLIER
         )
 
         side = "seller" if is_supplier else "buyer"
@@ -417,10 +375,7 @@ def my_payments(
         offset,
     )
 
-    return [
-        _view(payment, side)
-        for payment in rows
-    ]
+    return [_view(payment, side) for payment in rows]
 
 
 @router.get("/payments/{payment_id}")

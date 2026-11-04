@@ -147,15 +147,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_payment_events_business", table_name="payment_event")
-    op.drop_index("ix_payment_events_payment", table_name="payment_event")
-    op.drop_table("payment_event")
-    op.drop_index("ix_payments_needs_review", table_name="payment")
-    op.drop_constraint(
-        op.f("ck_payment_payout_split_matches_amount"), "payment", type_="check"
+    op.drop_index(
+        "ix_payment_events_business", table_name="payment_event", if_exists=True
     )
-    op.drop_constraint(op.f("ck_payment_fee_non_negative"), "payment", type_="check")
-    op.drop_constraint(op.f("uq_payment_refund_reference"), "payment", type_="unique")
+    op.drop_index(
+        "ix_payment_events_payment", table_name="payment_event", if_exists=True
+    )
+    op.drop_table("payment_event", if_exists=True)
+    op.drop_index("ix_payments_needs_review", table_name="payment", if_exists=True)
+    for name, type_ in (
+        ("ck_payment_payout_split_matches_amount", "check"),
+        ("ck_payment_fee_non_negative", "check"),
+        ("uq_payment_refund_reference", "unique"),
+    ):
+        op.drop_constraint(op.f(name), "payment", type_=type_, if_exists=True)
     for col in (
         "refunded_at",
         "refund_reference",
@@ -167,5 +172,5 @@ def downgrade() -> None:
         "payout_amount",
         "fee_amount",
     ):
-        op.drop_column("payment", col)
+        op.drop_column("payment", col, if_exists=True)
     postgresql.ENUM(name="refund_status").drop(op.get_bind(), checkfirst=True)

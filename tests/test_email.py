@@ -1,7 +1,10 @@
 """Email building and sending unit tests: no database, no network."""
 
+import io
+import json
 import logging
-import smtplib
+import urllib.error
+import urllib.request
 import uuid
 
 import pytest
@@ -9,9 +12,9 @@ import pytest
 from core.config import Settings
 from models.user import User
 from services.email_service import (
+    BrevoEmailSender,
     LoggingEmailSender,
     OutgoingEmail,
-    SmtpEmailSender,
     build_email_sender,
     build_password_reset_email,
     build_verification_email,
@@ -34,17 +37,9 @@ def make_user(first_name="Aline") -> User:
     )
 
 
-class FakeSMTP:
-    """Stands in for smtplib.SMTP / SMTP_SSL and records what happens."""
-
-    instances: list = []
-    fail_on_send = False
-
-    def __init__(self, host, port, timeout=None, context=None):
-        self.host, self.port, self.timeout, self.context = host, port, timeout, context
-        self.calls = []
-        self.sent = []
-        FakeSMTP.instances.append(self)
+class FakeResponse:
+    def __init__(self, status):
+        self.status = status
 
     def __enter__(self):
         return self
@@ -52,38 +47,23 @@ class FakeSMTP:
     def __exit__(self, *exc):
         return False
 
-    def starttls(self, context=None):
-        self.calls.append("starttls")
-
-    def login(self, username, password):
-        self.calls.append(("login", username, password))
-
-    def send_message(self, message):
-        if FakeSMTP.fail_on_send:
-            raise smtplib.SMTPException("boom")
-        self.sent.append(message)
-
 
 @pytest.fixture
-def smtp(monkeypatch):
-    FakeSMTP.instances = []
-    FakeSMTP.fail_on_send = False
-    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
-    monkeypatch.setattr(smtplib, "SMTP_SSL", FakeSMTP)
-    return FakeSMTP
+def brevo(monkeypatch):
+    calls = {"requests": [], "status": 201, "error": None}
+
+    def fake_urlopen(request, timeout=None):
+        calls["requests"].append((request, timeout))
+        if calls["error"] is not None:
+            raise calls["error"]
+        return FakeResponse(calls["status"])
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    return calls
 
 
-def sender(**overrides) -> SmtpEmailSender:
-    values = dict(
-        host="smtp.example.com",
-        port=587,
-        username="apikey",
-        password="s3cret",
-        starttls=True,
-        sender="HUZA <no-reply@huza.rw>",
-    )
-    values.update(overrides)
-    return SmtpEmailSender(**values)
+def sender() -> BrevoEmailSender:
+    return BrevoEmailSender(api_key="brevo-key", sender_email="no-reply@huza.ke")
 
 
 EMAIL = OutgoingEmail(
@@ -95,62 +75,72 @@ EMAIL = OutgoingEmail(
 )
 
 
-# --------------------------------------------------------------------------- #
-# SMTP sender
-# --------------------------------------------------------------------------- #
-
-
-def test_sends_with_starttls_and_login(smtp):
+def test_sends_the_message_to_the_brevo_api(brevo):
     sender().send(EMAIL)
 
-    (connection,) = smtp.instances
-    assert (connection.host, connection.port) == ("smtp.example.com", 587)
-    assert connection.calls == ["starttls", ("login", "apikey", "s3cret")]
-    (message,) = connection.sent
-    assert message["To"] == "aline@example.rw"
-    assert message["From"] == "HUZA <no-reply@huza.rw>"
-    assert message["Subject"] == "Hello"
-    assert message.get_body(("plain",)).get_content().strip() == "plain body"
-    assert "html body" in message.get_body(("html",)).get_content()
+    ((request, timeout),) = brevo["requests"]
+    assert request.full_url == "https://api.brevo.com/v3/smtp/email"
+    assert request.get_method() == "POST"
+    assert request.get_header("Api-key") == "brevo-key"
+    assert timeout == 10
+    body = json.loads(request.data)
+    assert body["sender"] == {"name": "HUZA Team", "email": "no-reply@huza.ke"}
+    assert body["to"] == [{"email": "aline@example.rw"}]
+    assert body["subject"] == "Hello"
+    assert body["textContent"] == "plain body"
+    assert body["htmlContent"] == "<p>html body</p>"
 
 
-def test_a_connection_without_credentials_skips_login(smtp):
-    sender(username=None, password=None, starttls=False).send(EMAIL)
-    assert smtp.instances[0].calls == []
+def test_a_plain_text_message_has_no_html_content(brevo):
+    sender().send(OutgoingEmail(to="aline@example.rw", subject="Hi", text="only"))
+    body = json.loads(brevo["requests"][0][0].data)
+    assert "htmlContent" not in body
 
 
-def test_port_465_uses_implicit_ssl_and_no_starttls(smtp):
-    sender(port=465).send(EMAIL)
-    assert "starttls" not in smtp.instances[0].calls
-
-
-def test_send_or_raise_lets_the_error_through(smtp):
-    smtp.fail_on_send = True
-    with pytest.raises(smtplib.SMTPException):
+def test_send_or_raise_rejects_an_unexpected_status(brevo):
+    brevo["status"] = 500
+    with pytest.raises(RuntimeError):
         sender().send_or_raise(EMAIL)
 
 
-def test_a_send_failure_is_logged_and_does_not_crash(smtp, caplog):
-    smtp.fail_on_send = True
+def test_send_or_raise_lets_the_error_through(brevo):
+    brevo["error"] = urllib.error.URLError("down")
+    with pytest.raises(urllib.error.URLError):
+        sender().send_or_raise(EMAIL)
+
+
+def test_a_send_failure_is_logged_and_does_not_crash(brevo, caplog):
+    brevo["error"] = urllib.error.URLError("down")
     with caplog.at_level(logging.ERROR, logger="huza.email"):
         sender().send(EMAIL)
     assert "Could not send email" in caplog.text
     assert "aline@example.rw" not in caplog.text
 
 
-# --------------------------------------------------------------------------- #
-# Choosing a sender
-# --------------------------------------------------------------------------- #
+def test_an_http_error_from_brevo_is_logged_without_the_recipient(brevo, caplog):
+    brevo["error"] = urllib.error.HTTPError(
+        "https://api.brevo.com/v3/smtp/email",
+        401,
+        "Unauthorized",
+        {},
+        io.BytesIO(b'{"message":"Key not found"}'),
+    )
+    with caplog.at_level(logging.ERROR, logger="huza.email"):
+        sender().send(EMAIL)
+    assert "401" in caplog.text and "Key not found" in caplog.text
+    assert "aline@example.rw" not in caplog.text
 
 
-def test_smtp_is_used_when_a_host_is_configured():
-    settings = Settings(**SETTINGS, smtp_host="smtp.example.com")
-    assert isinstance(build_email_sender(settings), SmtpEmailSender)
+def test_brevo_is_used_when_an_api_key_is_configured(monkeypatch):
+    monkeypatch.setenv("BREVO_API_KEY", "brevo-key")
+    chosen = build_email_sender(Settings(**SETTINGS))
+    assert isinstance(chosen, BrevoEmailSender)
+    assert chosen.api_key == "brevo-key"
 
 
-def test_a_blank_host_falls_back_to_the_logging_sender():
-    settings = Settings(**SETTINGS, smtp_host="")
-    assert isinstance(build_email_sender(settings), LoggingEmailSender)
+def test_without_an_api_key_the_logging_sender_is_used(monkeypatch):
+    monkeypatch.delenv("BREVO_API_KEY", raising=False)
+    assert isinstance(build_email_sender(Settings(**SETTINGS)), LoggingEmailSender)
 
 
 def test_development_prints_the_link(caplog):
@@ -164,11 +154,6 @@ def test_production_never_logs_the_link(caplog):
         LoggingEmailSender(reveal_links=False).send(EMAIL)
     assert "huza://x" not in caplog.text
     assert "aline@example.rw" not in caplog.text
-
-
-# --------------------------------------------------------------------------- #
-# Messages
-# --------------------------------------------------------------------------- #
 
 
 def test_the_verification_email_carries_a_link_to_the_app():
