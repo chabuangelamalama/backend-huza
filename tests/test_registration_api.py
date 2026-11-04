@@ -216,6 +216,7 @@ def test_a_pending_business_can_be_read_and_edited(client, session):
     assert shown.status_code == 200
     assert shown.json()["business_legal_name"] == "Inzozi Ltd"
     assert shown.json()["location"]["sub_county"] == "Starehe"
+    assert shown.json()["location"]["county"] == "Nairobi County"
 
     edited = client.patch(
         "/business/me",

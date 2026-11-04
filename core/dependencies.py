@@ -1,3 +1,5 @@
+"""FastAPI dependencies: current user, role checks, and service wiring."""
+
 from fastapi import Depends, HTTPException, status
 from fastapi.params import Depends as DependsClass
 from fastapi.security import OAuth2PasswordBearer
@@ -18,6 +20,11 @@ from services.user_service import UserService
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
 
+# --------------------------------------------------------------------------- #
+# Wiring
+# --------------------------------------------------------------------------- #
+
+
 def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
     return UserRepository(db)
 
@@ -27,13 +34,6 @@ def get_auth_service(
     settings: Settings = Depends(get_settings),
 ) -> AuthService:
     return AuthService(users, settings)
-
-
-def get_registration_service(
-    users: UserRepository = Depends(get_user_repository),
-    settings: Settings = Depends(get_settings),
-) -> RegistrationService:
-    return RegistrationService(users, settings)
 
 
 def get_user_service(
@@ -97,3 +97,10 @@ def require_roles(*roles: UserRole):
 
 require_admin = require_roles(UserRole.ADMIN)
 require_business_user = require_roles(UserRole.BUSINESS_USER)
+
+
+def get_registration_service(
+    users: UserRepository = Depends(get_user_repository),
+    settings: Settings = Depends(get_settings),
+) -> RegistrationService:
+    return RegistrationService(users, settings)
