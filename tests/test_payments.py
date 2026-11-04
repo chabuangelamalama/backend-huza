@@ -72,9 +72,11 @@ class FakeMpesa:
             raise MpesaRejected(self.transfer_reject)
         self.transfers[kw["reference_id"]] = {
             **kw,
+            "external_id": kw["reference_id"],
             "status": self.transfer_status,
             "reason": None,
         }
+        return f"conv-{kw['reference_id'][:8]}"
 
     def get_transfer(self, ref):
         r = self.transfers.get(ref)
@@ -354,3 +356,246 @@ def test_only_the_buyer_confirms_receipt(svc, world, mpesa):
         with pytest.raises(HTTPException) as e:
             svc.confirm_receipt(world[who], world["enquiry"].enquiry_id)
         assert e.value.status_code == 404
+
+
+def test_successful_payment_marks_the_enquiry_paid(svc, world, mpesa, session):
+    paid(svc, world, mpesa)
+    session.refresh(world["enquiry"])
+    assert world["enquiry"].status == EnquiryStatus.PAID
+
+
+def test_reading_a_pending_payment_asks_mpesa_for_the_result(svc, world, mpesa):
+    p = pay(svc, world)
+    mpesa.settle("SUCCESSFUL")  # Safaricom has the result but no callback came
+
+    found, _ = svc.get_payment_for_enquiry(world["buyer"], world["enquiry"].enquiry_id)
+
+    assert found.payment_id == p.payment_id
+    assert found.status == PaymentStatus.SUCCESSFUL
+
+
+def test_status_refresh_survives_mpesa_being_down(svc, world, mpesa):
+    pay(svc, world)
+
+    def down(_checkout_id):
+        raise MpesaTransient("down")
+
+    mpesa.get_request_to_pay = down
+    found, _ = svc.get_payment_for_enquiry(world["buyer"], world["enquiry"].enquiry_id)
+    assert found.status == PaymentStatus.PENDING
+
+
+def test_confirm_receipt_completes_enquiry_and_pays_the_seller(
+    svc, world, mpesa, session
+):
+    p = paid(svc, world, mpesa)
+
+    confirmed = svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+
+    session.refresh(world["enquiry"])
+    assert world["enquiry"].status == EnquiryStatus.COMPLETED
+    assert world["enquiry"].closed_at is not None
+    assert confirmed.payout_status == PayoutStatus.PENDING
+    assert confirmed.payout_reference is not None
+    transfer = mpesa.transfers[str(p.payment_id)]
+    assert transfer["phone_number"] == world["seller_b"].payout_phone
+    assert transfer["amount"] == p.amount
+    assert "RECEIPT_CONFIRMED" in event_types(session, p.payment_id)
+    assert "PAYOUT_REQUESTED" in event_types(session, p.payment_id)
+
+
+def test_receipt_can_only_be_confirmed_once(svc, world, mpesa):
+    paid(svc, world, mpesa)
+    svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+    with pytest.raises(HTTPException) as e:
+        svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+    assert code(e) == "receipt_already_confirmed"
+    assert len(mpesa.transfers) == 1
+
+
+def test_rejected_payout_keeps_the_confirmation_and_admin_can_retry(
+    svc, world, mpesa, session
+):
+    p = paid(svc, world, mpesa)
+    mpesa.transfer_reject = "B2C payouts are not configured"
+
+    confirmed = svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+
+    session.refresh(world["enquiry"])
+    assert world["enquiry"].status == EnquiryStatus.COMPLETED
+    assert confirmed.payout_status == PayoutStatus.FAILED
+    assert "not configured" in confirmed.payout_failure_reason
+
+    mpesa.transfer_reject = None
+    retried = svc.initiate_payout(world["admin"], p.payment_id)
+    assert retried.payout_status == PayoutStatus.PENDING
+    assert str(p.payment_id) in mpesa.transfers
+
+
+def test_admin_cannot_send_a_second_payout_while_one_is_in_flight(svc, world, mpesa):
+    p = paid(svc, world, mpesa)
+    svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+    with pytest.raises(HTTPException) as e:
+        svc.initiate_payout(world["admin"], p.payment_id)
+    assert code(e) == "payout_in_progress"
+
+
+def test_no_automatic_payout_when_auto_payout_is_off(session, world, mpesa):
+    svc = PaymentService(session, mpesa, make_settings(auto_payout=False))
+    paid(svc, world, mpesa)
+    confirmed = svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+    assert confirmed.payout_status == PayoutStatus.PENDING
+    assert mpesa.transfers == {}
+
+
+def stk_success(payment, receipt="UK5IR0ZYZO"):
+    return {
+        "Body": {
+            "stkCallback": {
+                "MerchantRequestID": "m-1",
+                "CheckoutRequestID": payment.mpesa_checkout_request_id,
+                "ResultCode": 0,
+                "ResultDesc": "The service request is processed successfully.",
+                "CallbackMetadata": {
+                    "Item": [
+                        {"Name": "Amount", "Value": float(payment.amount)},
+                        {"Name": "MpesaReceiptNumber", "Value": receipt},
+                        {"Name": "PhoneNumber", "Value": int(payment.phone_number)},
+                    ]
+                },
+            }
+        }
+    }
+
+
+def send_callback(svc, payment, body):
+    from services.mpesa import callback_token
+
+    token = callback_token(SECRET, "collection", payment.reference_id)
+    svc.handle_callback("collection", payment.reference_id, token, body)
+
+
+def test_callback_landing_during_a_status_check_settles_only_once(
+    svc, world, mpesa, session
+):
+    from sqlalchemy import text
+
+    p = pay(svc, world)
+    stock_before = world["listing"].quantity
+    real_query = mpesa.get_request_to_pay
+
+    def query_while_callback_lands(checkout_id):
+        # The callback commits in another request while we wait on Safaricom;
+        # this session still holds the old PENDING copy of the payment.
+        session.execute(
+            text(
+                "UPDATE payment SET status = 'SUCCESSFUL', stock_deducted = true, "
+                "mpesa_transaction_id = 'UK5IR0ZYZO' WHERE payment_id = :pid"
+            ),
+            {"pid": p.payment_id.hex},
+        )
+        session.execute(
+            text("UPDATE listing SET quantity = quantity - :q WHERE listing_id = :lid"),
+            {"q": world["enquiry"].quantity, "lid": world["listing"].listing_id.hex},
+        )
+        mpesa.settle("SUCCESSFUL")
+        return real_query(checkout_id)
+
+    mpesa.get_request_to_pay = query_while_callback_lands
+    svc.reconcile_payment(p.payment_id)
+
+    session.expire_all()
+    listing = session.get(type(world["listing"]), world["listing"].listing_id)
+    assert listing.quantity == stock_before - world["enquiry"].quantity
+    assert event_types(session, p.payment_id).count("PAYMENT_SETTLED") == 0
+    assert session.get(Payment, p.payment_id).mpesa_receipt_number == "UK5IR0ZYZO"
+
+
+def test_late_callback_replaces_the_checkout_id_with_the_real_receipt(
+    svc, world, mpesa, session
+):
+    p = paid(svc, world, mpesa)  # settled by a status check: no receipt yet
+    assert p.mpesa_receipt_number == p.mpesa_checkout_request_id
+
+    send_callback(svc, p, stk_success(p))
+
+    session.expire_all()
+    settled = session.get(Payment, p.payment_id)
+    assert settled.mpesa_receipt_number == "UK5IR0ZYZO"
+    assert event_types(session, p.payment_id).count("PAYMENT_SETTLED") == 1
+
+
+def test_callback_settles_a_pending_payment(svc, world, mpesa, session):
+    p = pay(svc, world)
+    send_callback(svc, p, stk_success(p))
+    session.expire_all()
+    settled = session.get(Payment, p.payment_id)
+    assert settled.status == PaymentStatus.SUCCESSFUL
+    assert settled.mpesa_receipt_number == "UK5IR0ZYZO"
+    assert session.get(type(world["enquiry"]), world["enquiry"].enquiry_id).status == (
+        EnquiryStatus.PAID
+    )
+
+
+def b2c_result(code, desc="The service request is processed successfully."):
+    return {
+        "Result": {
+            "ResultType": 0,
+            "ResultCode": code,
+            "ResultDesc": desc,
+            "OriginatorConversationID": "oc-1",
+            "ConversationID": "AG_20261105_0100105800tabkuiic98",
+            "TransactionID": "UK5B2C0001",
+        }
+    }
+
+
+def send_b2c(svc, payment, body):
+    from services.mpesa import callback_token
+
+    ref = str(payment.payment_id)
+    svc.handle_callback(
+        "disbursement", ref, callback_token(SECRET, "disbursement", ref), body
+    )
+
+
+def confirmed(svc, world, mpesa):
+    paid(svc, world, mpesa)
+    return svc.confirm_receipt(world["buyer"], world["enquiry"].enquiry_id)
+
+
+def test_b2c_success_callback_marks_the_payout_paid(svc, world, mpesa, session):
+    p = confirmed(svc, world, mpesa)
+    send_b2c(svc, p, b2c_result(0))
+    session.expire_all()
+    p = session.get(Payment, p.payment_id)
+    assert p.payout_status == PayoutStatus.PAID
+    assert p.paid_out_at is not None
+    assert "PAYOUT_PAID" in event_types(session, p.payment_id)
+
+
+@pytest.mark.parametrize(
+    "code, desc",
+    [
+        (2001, "The initiator information is invalid."),
+        ("SFC_IC0003", "Operator does not exist."),
+    ],
+)
+def test_b2c_failure_callback_marks_the_payout_failed_with_the_reason(
+    svc, world, mpesa, session, code, desc
+):
+    p = confirmed(svc, world, mpesa)
+    send_b2c(svc, p, b2c_result(code, desc))
+    session.expire_all()
+    p = session.get(Payment, p.payment_id)
+    assert p.payout_status == PayoutStatus.FAILED
+    assert p.payout_failure_reason == f"{code}: {desc}"
+    assert not p.needs_review
+    assert "PAYOUT_FAILED" in event_types(session, p.payment_id)
+
+
+def test_failed_payout_can_be_retried_by_an_admin(svc, world, mpesa, session):
+    p = confirmed(svc, world, mpesa)
+    send_b2c(svc, p, b2c_result("SFC_IC0003", "Operator does not exist."))
+    retried = svc.initiate_payout(world["admin"], p.payment_id)
+    assert retried.payout_status == PayoutStatus.PENDING

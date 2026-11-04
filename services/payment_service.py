@@ -20,6 +20,7 @@ from models.user import User, UserRole
 from repositories import payment_repository as repo
 from schemas.payment import normalize_msisdn, safe_reason
 from services.mpesa import (
+    MpesaError,
     MpesaGateway,
     MpesaRejected,
     MpesaTransient,
@@ -402,13 +403,38 @@ class PaymentService:
             )
             self.db.commit()
 
+    def _lock_if_pending(self, payment: Payment) -> bool:
+        """Re-read the payment under a row lock; True if it is still PENDING.
+
+        The M-Pesa callback and a status check can race for the same payment.
+        Whoever takes the lock second sees the other's result and stops, so a
+        payment is settled (and stock deducted) only once.
+        """
+        repo.get_payment(self.db, payment.payment_id, lock=True)
+        return payment.status == PaymentStatus.PENDING
+
     def _settle_successful_payment(
         self,
         payment: Payment,
         receipt: str,
         received_amount: Decimal,
+        *,
+        receipt_is_real: bool = True,
     ) -> None:
         """Mark payment successful, record audit event, and deduct listing stock."""
+        if not self._lock_if_pending(payment):
+            # Already settled by the other path. Keep the real M-Pesa receipt if
+            # the first settle only had the checkout request ID.
+            if (
+                receipt_is_real
+                and payment.status == PaymentStatus.SUCCESSFUL
+                and payment.mpesa_receipt_number
+                == getattr(payment, "mpesa_checkout_request_id", None)
+            ):
+                payment.mpesa_receipt_number = str(receipt)
+            self.db.commit()
+            return
+
         payment.mpesa_receipt_number = str(receipt)
         payment.status = PaymentStatus.SUCCESSFUL
         payment.paid_at = _now()
@@ -433,6 +459,8 @@ class PaymentService:
                     "Payment succeeded but its enquiry could not be found",
                 )
             else:
+                if enquiry.status == EnquiryStatus.AGREED:
+                    enquiry.status = EnquiryStatus.PAID
                 listing = repo.get_listing(self.db, enquiry.listing_id)
                 if listing is None:
                     self._flag_review(
@@ -479,6 +507,9 @@ class PaymentService:
                 return payment
 
             if result.status == "FAILED":
+                if not self._lock_if_pending(payment):
+                    self.db.commit()
+                    return payment
                 payment.status = PaymentStatus.FAILED
                 payment.failure_reason = safe_reason(result.reason)
                 self._event(
@@ -489,11 +520,14 @@ class PaymentService:
                 self.db.commit()
 
             elif result.status == "SUCCESSFUL":
-                receipt = getattr(result, "receipt", None) or str(checkout_id)
+                # The STK query does not return the M-Pesa receipt number, so
+                # store the checkout ID until (if ever) the callback brings it.
+                receipt = getattr(result, "receipt", None)
                 self._settle_successful_payment(
                     payment=payment,
-                    receipt=receipt,
+                    receipt=receipt or str(checkout_id),
                     received_amount=payment.amount,
+                    receipt_is_real=bool(receipt),
                 )
 
             return payment
@@ -592,21 +626,16 @@ class PaymentService:
                 "Missing ResultCode in B2C callback",
             )
 
-        try:
-            result_code_int = int(result_code)
-        except (TypeError, ValueError):
-            self._flag_review(
-                payment,
-                "B2C Callback contains an invalid ResultCode",
-            )
-            self.db.commit()
-            return
+        # Success is 0; failures may be numeric (e.g. 2001) or text such as
+        # "SFC_IC0003", so treat anything other than 0 as a failed payout.
+        result_code = str(result_code).strip()
+        succeeded = result_code.lstrip("0") == "" and result_code != ""
 
         if payment.payout_status == PayoutStatus.PAID:
             self.db.commit()
             return
 
-        if result_code_int == 0:
+        if succeeded:
             payment.payout_status = PayoutStatus.PAID
             payment.paid_out_at = _now()
             payment.payout_failure_reason = None
@@ -621,12 +650,14 @@ class PaymentService:
             )
         else:
             payment.payout_status = PayoutStatus.FAILED
-            payment.payout_failure_reason = str(result_desc)[:100]
+            payment.payout_failure_reason = (
+                f"{result_code}: {result_desc}" if result_desc else result_code
+            )[:100]
 
             self._event(
                 "PAYOUT_FAILED",
                 payment_id=payment.payment_id,
-                result_code=result_code_int,
+                result_code=result_code,
                 reason=result_desc,
             )
 
@@ -734,6 +765,12 @@ class PaymentService:
             )
 
         if payment.status == PaymentStatus.SUCCESSFUL:
+            # A status check may have settled it first without the receipt.
+            late_receipt = self._callback_metadata(callback).get("MpesaReceiptNumber")
+            if late_receipt and payment.mpesa_receipt_number == getattr(
+                payment, "mpesa_checkout_request_id", None
+            ):
+                payment.mpesa_receipt_number = str(late_receipt)
             self.db.commit()
             return
 
@@ -897,7 +934,27 @@ class PaymentService:
             enquiry,
             {"buyer", "seller", "admin"},
         )
-        return payment, side
+        return self._refresh_if_pending(payment), side
+
+    def _refresh_if_pending(self, payment: Payment) -> Payment:
+        """Ask Safaricom for the result of a PENDING payment.
+
+        The callback is the normal path, but if it never arrives (tunnel down,
+        Safaricom hiccup) reading the payment still moves it on. Polling is
+        rate-limited inside reconcile_payment.
+        """
+        if payment.status != PaymentStatus.PENDING or self.mpesa is None:
+            return payment
+        try:
+            return self.reconcile_payment(payment.payment_id) or payment
+        except MpesaError as exc:
+            log.warning(
+                "M-Pesa status refresh failed payment_id=%s error=%s",
+                payment.payment_id,
+                exc,
+            )
+            self.db.rollback()
+            return repo.get_payment(self.db, payment.payment_id) or payment
 
     def get_payment_for_enquiry(
         self,
@@ -915,7 +972,7 @@ class PaymentService:
         if not payment:
             raise PaymentError(404, *_NOT_FOUND)
 
-        return payment, side
+        return self._refresh_if_pending(payment), side
 
     def my_payments(
         self,
@@ -968,9 +1025,39 @@ class PaymentService:
                 "The payment has not been confirmed as successful",
             )
 
+        if payment.payout_status != PayoutStatus.NOT_DUE:
+            raise PaymentError(
+                409,
+                "receipt_already_confirmed",
+                "Receipt has already been confirmed for this enquiry",
+            )
+
+        enquiry = repo.get_enquiry(self.db, enquiry_id, lock=True)
+        now = _now()
+        enquiry.status = EnquiryStatus.COMPLETED
+        enquiry.closed_at = now
         payment.payout_status = PayoutStatus.PENDING
+        self._event(
+            "RECEIPT_CONFIRMED",
+            payment_id=payment.payment_id,
+            business_id=enquiry.buyer_business_id,
+            actor=actor,
+        )
         self.db.commit()
-        return payment
+
+        if self.s.auto_payout:
+            try:
+                self._send_payout(payment, enquiry)
+            except PaymentError as exc:
+                # The buyer's confirmation stands; an admin can retry the payout
+                # with POST /admin/payments/{payment_id}/payout.
+                log.warning(
+                    "Automatic payout not sent payment_id=%s reason=%s",
+                    payment.payment_id,
+                    exc.detail,
+                )
+
+        return repo.get_payment(self.db, payment.payment_id)
 
     def admin_list(
         self,
@@ -1056,6 +1143,14 @@ class PaymentService:
                 "Cannot initiate payout for a payment that is not successful",
             )
 
+        enquiry = repo.get_enquiry(self.db, payment.enquiry_id)
+        if not enquiry:
+            raise PaymentError(404, *_NOT_FOUND)
+
+        return self._send_payout(payment, enquiry)
+
+    def _send_payout(self, payment: Payment, enquiry) -> Payment:
+        """Send the seller's share by M-Pesa B2C. The result arrives by callback."""
         if payment.payout_status == PayoutStatus.PAID:
             raise PaymentError(
                 409,
@@ -1063,9 +1158,12 @@ class PaymentService:
                 "This payment has already been paid out to the seller",
             )
 
-        enquiry = repo.get_enquiry(self.db, payment.enquiry_id)
-        if not enquiry:
-            raise PaymentError(404, *_NOT_FOUND)
+        if payment.payout_status == PayoutStatus.PENDING and payment.payout_reference:
+            raise PaymentError(
+                409,
+                "payout_in_progress",
+                "A payout for this payment is already in progress",
+            )
 
         seller = repo.get_business(self.db, enquiry.seller_business_id)
         if not seller or not seller.payout_phone:
@@ -1091,12 +1189,25 @@ class PaymentService:
 
             payment.payout_reference = conversation_id
             payment.payout_status = PayoutStatus.PENDING
+            payment.payout_failure_reason = None
+            self._event(
+                "PAYOUT_REQUESTED",
+                payment_id=payment.payment_id,
+                business_id=enquiry.seller_business_id,
+                amount=amount,
+                phone=_mask(seller.payout_phone),
+            )
             self.db.commit()
             return payment
 
         except MpesaRejected as e:
             payment.payout_status = PayoutStatus.FAILED
             payment.payout_failure_reason = str(e.reason or e)[:100]
+            self._event(
+                "PAYOUT_FAILED",
+                payment_id=payment.payment_id,
+                reason=e.reason or e,
+            )
             self.db.commit()
             raise PaymentError(400, "payout_rejected", str(e.reason or e))
         except MpesaTransient:

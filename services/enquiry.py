@@ -126,6 +126,18 @@ class EnquiryService:
                 detail="This listing is not available for enquiries.",
             )
 
+        total_amount = payload.quantity * payload.unit_price
+        if total_amount != total_amount.to_integral_value():
+            # M-Pesa only collects whole shillings, so a fractional total could
+            # be agreed but never paid.
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"The total ({total_amount.normalize():f} KES) must be a whole "
+                    "number of shillings. Adjust the quantity or unit price."
+                ),
+            )
+
         if enquiry_repository.find_open(
             db, payload.listing_id, payload.buyer_business_id
         ):
@@ -135,7 +147,7 @@ class EnquiryService:
             )
 
         data = payload.model_dump()
-        data["total_amount"] = payload.quantity * payload.unit_price
+        data["total_amount"] = total_amount
         data["status"] = EnquiryStatus.ENQUIRY
 
         try:

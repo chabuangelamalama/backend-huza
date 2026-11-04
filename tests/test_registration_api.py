@@ -1,8 +1,3 @@
-"""Registration, email verification and business editing.
-
-The first block needs no database. The rest need the Postgres test database from
-conftest.py and are skipped automatically when it is not available."""
-
 import re
 import uuid
 from decimal import Decimal

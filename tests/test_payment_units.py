@@ -225,6 +225,29 @@ def test_status_read_parses_success_and_handles_404():
     assert make(httpx.Response(404)).get_request_to_pay(CHECKOUT_ID) is None
 
 
+def test_status_read_uses_the_daraja_stk_query_path():
+    seen = []
+
+    def handler(request):
+        if request.url.path.endswith("/generate"):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        seen.append(request.url.path)
+        if request.url.path != "/mpesa/stkpushquery/v1/query":
+            return httpx.Response(404)
+        return httpx.Response(
+            200,
+            json={
+                "ResultCode": "1037",
+                "ResultDesc": "DS timeout user cannot be reached",
+            },
+        )
+
+    result = client_for(handler).get_request_to_pay(CHECKOUT_ID)
+
+    assert seen == ["/mpesa/stkpushquery/v1/query"]
+    assert result.status == "FAILED" and result.result_code == 1037
+
+
 B2C = dict(
     b2c_shortcode="600999",
     initiator_name="huza-initiator",

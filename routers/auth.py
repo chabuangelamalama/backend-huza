@@ -8,6 +8,7 @@ from core.dependencies import (
     get_registration_service,
 )
 from models.user import User
+from schemas.auth import LoginRequest
 from schemas.registration import CodeRequest, RegisterRequest
 from services.auth_service import AuthService
 from services.email_service import EmailSender
@@ -40,13 +41,10 @@ def user_dict(user: User) -> dict:
 
 @router.post("/login")
 def login(
-    body: dict = Body(...),
+    body: LoginRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    token, expires_in, user = service.login(
-        body.get("email"),
-        body.get("password"),
-    )
+    token, expires_in, user = service.login(body.email, body.password)
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -90,7 +88,10 @@ def logout(
 
 @router.post("/change-password")
 def change_password(
-    body: dict = Body(...),
+    body: dict = Body(
+        ...,
+        examples=[{"current_password": "OldPassw0rd!", "new_password": "NewPassw0rd!"}],
+    ),
     user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
 ):
@@ -111,7 +112,7 @@ def change_password(
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
 def forgot_password(
     background: BackgroundTasks,
-    body: dict = Body(...),
+    body: dict = Body(..., examples=[{"email": "you@example.com"}]),
     service: AuthService = Depends(get_auth_service),
     mailer: EmailSender = Depends(get_mailer),
 ):
@@ -125,7 +126,12 @@ def forgot_password(
 
 @router.post("/reset-password")
 def reset_password(
-    body: dict = Body(...),
+    body: dict = Body(
+        ...,
+        examples=[
+            {"email": "you@example.com", "code": "123456", "password": "NewPassw0rd!"}
+        ],
+    ),
     service: AuthService = Depends(get_auth_service),
 ):
     """Reset a password using the reset code."""

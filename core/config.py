@@ -46,7 +46,6 @@ class Settings(BaseSettings):
     password_reset_url: str = "huza://reset-password"
     email_verify_url: str = "huza://verify-email"
 
-    # --- Email & SMTP configuration ---
     email_from: str = "onboarding@resend.dev"
     smtp_host: str | None = None
     smtp_port: int = 587

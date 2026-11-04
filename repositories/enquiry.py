@@ -24,7 +24,6 @@ class EnquiryRepository:
     def get(
         self, db: Session, enquiry_id: uuid.UUID, lock: bool = False
     ) -> Optional[Enquiry]:
-        """Retrieves a single enquiry by its primary tracking ID."""
         return db.get(self.model, enquiry_id, with_for_update=lock)
 
     def get_user(self, db: Session, user_id: uuid.UUID) -> Optional[User]:
@@ -66,7 +65,6 @@ class EnquiryRepository:
         return list(db.scalars(query))
 
     def get_all(self, db: Session, skip: int = 0, limit: int = 100):
-        """Lists all enquiries globally with standard pagination support."""
         return self.search(db, limit=limit, offset=skip)
 
     def find_open(
@@ -83,7 +81,6 @@ class EnquiryRepository:
         return db.scalars(query).first()
 
     def create(self, db: Session, data: Dict[str, Any], commit: bool = True) -> Enquiry:
-        """Persists a brand new enquiry payload directly into the database row engine."""
         enquiry = self.model(**data)
         db.add(enquiry)
         if commit:
@@ -96,7 +93,6 @@ class EnquiryRepository:
     def update(
         self, db: Session, db_obj: Enquiry, data: Dict[str, Any], commit: bool = True
     ) -> Enquiry:
-        """Modifies permitted fields safely against active database rows."""
         allowed_columns = self.model.__table__.columns.keys()
 
         for field, value in data.items():
@@ -111,7 +107,6 @@ class EnquiryRepository:
         return db_obj
 
     def delete(self, db: Session, db_obj: Enquiry, commit: bool = True) -> None:
-        """Deletes a targeted enquiry log entirely from database tracking layers."""
         db.delete(db_obj)
         if commit:
             db.commit()

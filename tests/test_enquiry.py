@@ -347,7 +347,7 @@ def test_accept_needs_a_login(client, world):
 
 
 def test_api_enquiry_is_payable_like_the_seed(client, world, session):
-    """Create -> accept through the API gives the same payable enquiry as seed_enquiry.py."""
+    """Create -> accept through the API gives an enquiry the buyer can pay."""
     from models.business import PayoutNetwork
     from models.enquiry import Enquiry
     from services.payment_service import PaymentService
@@ -368,3 +368,15 @@ def test_api_enquiry_is_payable_like_the_seed(client, world, session):
 
     service = PaymentService(session, None, make_settings())
     service._check_can_pay(world.buyer_user, enquiry, "254708374149")
+
+
+def test_total_must_be_whole_shillings(client, world):
+    response = create(client, world, quantity="3.000", unit_price="10.5000")
+    assert response.status_code == 422
+    assert "31.5 KES" in response.json()["detail"]
+
+
+def test_fractional_inputs_with_whole_total_are_allowed(client, world):
+    response = create(client, world, quantity="2.500", unit_price="4.0000")
+    assert response.status_code == 201
+    assert Decimal(response.json()["total_amount"]) == Decimal("10")

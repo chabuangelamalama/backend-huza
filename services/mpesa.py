@@ -237,7 +237,7 @@ class MpesaClient:
 
         try:
             r = self.http.post(
-                "/mpesa/stkpush/v1/query",
+                "/mpesa/stkpushquery/v1/query",
                 json=payload,
                 headers=headers,
             )

@@ -20,11 +20,6 @@ from services.user_service import UserService
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
 
-# --------------------------------------------------------------------------- #
-# Wiring
-# --------------------------------------------------------------------------- #
-
-
 def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
     return UserRepository(db)
 
@@ -44,11 +39,6 @@ def get_user_service(
 
 def get_mailer(settings: Settings = Depends(get_settings)) -> EmailSender:
     return build_email_sender(settings)
-
-
-# --------------------------------------------------------------------------- #
-# Authentication and role-based access
-# --------------------------------------------------------------------------- #
 
 
 def get_current_user(

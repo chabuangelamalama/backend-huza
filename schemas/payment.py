@@ -66,9 +66,6 @@ def safe_reason(raw: str | None) -> str | None:
     return raw if raw in KNOWN_REASONS else "UNKNOWN"
 
 
-# ---- Requests ----------------------------------------------------------------
-
-
 class InitiatePaymentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     phone_number: str = Field(min_length=9, max_length=20)
@@ -93,9 +90,6 @@ class PayoutDetailsRequest(BaseModel):
     @classmethod
     def _phone(cls, v: str) -> str:
         return normalize_msisdn(v)
-
-
-# ---- Responses ---------------------------------------------------------------
 
 
 class PaymentBuyerOut(BaseModel):
@@ -163,9 +157,6 @@ class PayoutDetailsOut(BaseModel):
 
     payout_phone: str | None
     payout_network: PayoutNetwork | None
-
-
-# ---- View Helpers ------------------------------------------------------------
 
 
 def buyer_view(p: Payment) -> PaymentBuyerOut:
