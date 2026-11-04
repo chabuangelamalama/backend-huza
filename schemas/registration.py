@@ -20,8 +20,8 @@ class LocationIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=500)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
-    district: str = Field(min_length=1, max_length=100)
-    province: str = Field(min_length=1, max_length=100)
+    sub_county: str = Field(min_length=1, max_length=100)
+    county: str = Field(min_length=1, max_length=100)
     osm_type: OsmType | None = None
     osm_id: int | None = Field(default=None, gt=0)
 
@@ -97,8 +97,8 @@ class LocationOut(BaseModel):
     location_id: uuid.UUID
     name: str
     display_name: str
-    district: str
-    province: str
+    sub_county: str
+    county: str
     latitude: float
     longitude: float
 

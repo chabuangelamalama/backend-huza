@@ -161,7 +161,7 @@ def build_password_reset_email(
     <h2 style="color: #113225; margin-top: 0; font-size: 22px;">Reset your password</h2>
     <p style="color: #4b5563; font-size: 15px; line-height: 1.5;">Hello {safe_name},</p>
     <p style="color: #4b5563; font-size: 15px; line-height: 1.5;">We received a request to reset your HUZA password. Enter the 6-digit code below in the app:</p>
-    
+
     <div style="text-align: center; margin: 28px 0;">
       <span style="display: inline-block; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #113225; background-color: #ecfdf5; padding: 14px 28px; border-radius: 8px; border: 1px dashed #059669;">
         {code}

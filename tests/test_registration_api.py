@@ -41,8 +41,8 @@ def payload(**changes) -> dict:
             "display_name": "Remera Market, Gasabo, Kigali City, Rwanda",
             "latitude": -1.9577,
             "longitude": 30.1127,
-            "district": "Gasabo",
-            "province": "Kigali City",
+            "sub_county": "Gasabo",
+            "county": "Kigali City",
         },
     }
     body.update(changes)
@@ -218,7 +218,8 @@ def test_a_pending_business_can_be_read_and_edited(client, session):
     shown = client.get("/business/me", headers=headers)
     assert shown.status_code == 200
     assert shown.json()["business_legal_name"] == "Inzozi Ltd"
-    assert shown.json()["location"]["district"] == "Gasabo"
+    assert shown.json()["location"]["sub_county"] == "Gasabo"
+    assert shown.json()["location"]["county"] == "Kigali City"
 
     edited = client.patch(
         "/business/me",
