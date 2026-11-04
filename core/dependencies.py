@@ -13,6 +13,7 @@ from models.user import User, UserRole
 from repositories.user_repository import UserRepository
 from services.auth_service import AuthService
 from services.email_service import EmailSender, LoggingEmailSender, SmtpEmailSender
+from services.registration_service import RegistrationService
 from services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
@@ -98,3 +99,10 @@ def require_roles(*roles: UserRole):
 
 require_admin = require_roles(UserRole.ADMIN)
 require_business_user = require_roles(UserRole.BUSINESS_USER)
+
+
+def get_registration_service(
+    users: UserRepository = Depends(get_user_repository),
+    settings: Settings = Depends(get_settings),
+) -> RegistrationService:
+    return RegistrationService(users, settings)
