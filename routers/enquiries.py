@@ -4,9 +4,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from core.security import CurrentUser, get_current_user
+from core.dependencies import get_current_user
+from models.user import User
 from database import get_db
-from schemas.enquiry import EnquiryCreate, EnquiryFilter, EnquiryRead
+from schemas.enquiry import EnquiryClose, EnquiryCreate, EnquiryFilter, EnquiryRead
 from services.enquiry import enquiry_service
 
 router = APIRouter(prefix="/enquiries", tags=["enquiries"])
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/enquiries", tags=["enquiries"])
 def create_enquiry(
     payload: EnquiryCreate,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     return enquiry_service.create_enquiry(db, payload, current_user)
 
@@ -25,7 +26,7 @@ def create_enquiry(
 def list_enquiries(
     filters: Annotated[EnquiryFilter, Query()],
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     return enquiry_service.list_enquiries(
         db,
@@ -38,7 +39,7 @@ def list_enquiries(
 def get_enquiry(
     enquiry_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     return enquiry_service.get_enquiry(db, enquiry_id, current_user)
 
@@ -47,7 +48,18 @@ def get_enquiry(
 def accept_enquiry(
     enquiry_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Seller accepts the enquiry (ENQUIRY -> AGREED) so the buyer can pay."""
     return enquiry_service.accept_enquiry(db, enquiry_id, current_user)
+
+
+@router.post("/{enquiry_id}/close", response_model=EnquiryRead)
+def close_enquiry(
+    enquiry_id: uuid.UUID,
+    payload: EnquiryClose,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Buyer or seller ends the enquiry as CANCELLED or UNSUCCESSFUL, with a reason."""
+    return enquiry_service.close_enquiry(db, enquiry_id, payload, current_user)

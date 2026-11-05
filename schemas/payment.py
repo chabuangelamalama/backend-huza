@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import Literal
 from decimal import Decimal
 from uuid import UUID
 
@@ -216,3 +217,50 @@ def admin_view(p: Payment) -> PaymentAdminOut:
         needs_review=p.needs_review,
         review_reason=p.review_reason,
     )
+
+
+PaymentSide = Literal["buyer", "seller", "admin"]
+
+
+class MyPaymentsFilter(BaseModel):
+    side: Literal["buyer", "seller"] | None = None
+    status: str | None = None
+    limit: int = Field(20, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+
+class AdminPaymentsFilter(BaseModel):
+    status: str | None = None
+    payout_status: str | None = None
+    needs_review: bool | None = None
+    limit: int = Field(50, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+
+def _mask_short(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    clean = str(phone).replace("+", "").strip()
+    return f"{clean[:3]}****{clean[-3:]}" if len(clean) >= 6 else clean
+
+
+def payment_view(payment: Payment, side: PaymentSide) -> dict:
+    """The payment as one side of the deal may see it."""
+    data = {
+        "payment_id": str(payment.payment_id),
+        "enquiry_id": str(payment.enquiry_id),
+        "amount": float(payment.amount) if payment.amount is not None else 0.0,
+        "status": PaymentStatus(payment.status).value,
+        "payout_status": PayoutStatus(payment.payout_status).value,
+    }
+    if side == "buyer":
+        data["phone_number"] = _mask_short(payment.phone_number)
+    elif side == "admin":
+        data.update(
+            reference_id=payment.reference_id,
+            needs_review=payment.needs_review,
+            review_reason=payment.review_reason,
+            phone_number=payment.phone_number,
+            mpesa_receipt_number=payment.mpesa_receipt_number,
+        )
+    return data

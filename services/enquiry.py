@@ -9,8 +9,9 @@ from core.security import CurrentUser
 from models.business import ApprovalStatus
 from models.enquiry import EnquiryStatus
 from models.listing import ListingStatus
+from models.notification import NotificationEvent
 from repositories.enquiry import enquiry_repository
-from schemas.enquiry import EnquiryCreate
+from schemas.enquiry import EnquiryClose, EnquiryCreate
 
 
 def _role_of(current_user: CurrentUser) -> str:
@@ -151,7 +152,14 @@ class EnquiryService:
         data["status"] = EnquiryStatus.ENQUIRY
 
         try:
-            return enquiry_repository.create(db, data)
+            enquiry = enquiry_repository.create(db, data, commit=False)
+            enquiry_repository.notify_business(
+                db,
+                enquiry.seller_business_id,
+                NotificationEvent.ENQUIRY_RECEIVED,
+                enquiry.enquiry_id,
+            )
+            return self._commit(db, enquiry)
         except IntegrityError:
             db.rollback()
             raise HTTPException(
@@ -232,7 +240,7 @@ class EnquiryService:
             )
 
         now = datetime.now(timezone.utc)
-        return enquiry_repository.update(
+        enquiry_repository.update(
             db,
             enquiry,
             {
@@ -240,7 +248,77 @@ class EnquiryService:
                 "accepted_at": now,
                 "first_response_at": enquiry.first_response_at or now,
             },
+            commit=False,
         )
+        enquiry_repository.notify_business(
+            db,
+            enquiry.buyer_business_id,
+            NotificationEvent.STATUS_CHANGED,
+            enquiry.enquiry_id,
+        )
+        return self._commit(db, enquiry)
+
+    def close_enquiry(
+        self,
+        db: Session,
+        enquiry_id: uuid.UUID,
+        payload: EnquiryClose,
+        current_user: CurrentUser,
+    ):
+        """Either side ends an open enquiry as CANCELLED or UNSUCCESSFUL."""
+        _authorise(current_user, "close enquiries")
+        business = self._business_of(db, current_user, "close enquiries")
+        enquiry = enquiry_repository.get(db, enquiry_id, lock=True)
+        if enquiry is None or not self._is_participant(enquiry, business.business_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Enquiry not found.",
+            )
+
+        if enquiry.status == EnquiryStatus.PAID:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "This enquiry has been paid, so it cannot be closed here. "
+                    "Contact support to arrange a refund."
+                ),
+            )
+        if enquiry.status not in (EnquiryStatus.ENQUIRY, EnquiryStatus.AGREED):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"This enquiry is already {enquiry.status.value.lower()}.",
+            )
+        if enquiry_repository.has_pending_payment(db, enquiry.enquiry_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A payment for this enquiry is in progress. Try again shortly.",
+            )
+
+        now = datetime.now(timezone.utc)
+        changes = {
+            "status": payload.status,
+            "failure_reason": payload.failure_reason,
+            "closed_at": now,
+        }
+        closed_by_seller = business.business_id == enquiry.seller_business_id
+        if closed_by_seller:
+            changes["first_response_at"] = enquiry.first_response_at or now
+        enquiry_repository.update(db, enquiry, changes, commit=False)
+        enquiry_repository.notify_business(
+            db,
+            enquiry.buyer_business_id
+            if closed_by_seller
+            else enquiry.seller_business_id,
+            NotificationEvent.STATUS_CHANGED,
+            enquiry.enquiry_id,
+        )
+        return self._commit(db, enquiry)
+
+    @staticmethod
+    def _commit(db: Session, enquiry):
+        db.commit()
+        db.refresh(enquiry)
+        return enquiry
 
     def open_enquiry(self, db: Session, enquiry_id: uuid.UUID):
         enquiry = self._get_enquiry_or_404(db, enquiry_id)

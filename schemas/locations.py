@@ -50,3 +50,8 @@ class PlaceResult(BaseModel):
     @field_serializer("latitude", "longitude", when_used="json")
     def as_number(self, value: Decimal) -> float:
         return float(value)
+
+
+class PlaceSearch(BaseModel):
+    q: str = Field(min_length=2, max_length=100)
+    limit: int = Field(5, ge=1, le=10)

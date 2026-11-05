@@ -1154,7 +1154,9 @@ LOOKUP = "/price-guides/lookup"
 
 
 def headers_for(user):
-    token = create_access_token(user.user_id, user.user_role)
+    token = create_access_token(
+        user.user_id, user.user_role, token_version=user.token_version
+    )
     return {"Authorization": f"Bearer {token}"}
 
 

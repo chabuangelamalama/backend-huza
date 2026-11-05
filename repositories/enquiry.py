@@ -2,11 +2,13 @@ import uuid
 from typing import Any, Dict, Optional
 
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from models.business import Business
 from models.enquiry import Enquiry, EnquiryStatus
 from models.listing import Listing
+from models.notification import Notification, NotificationEvent
+from models.payment import Payment, PaymentStatus
 from models.user import User
 
 OPEN_STATUSES = (
@@ -45,7 +47,9 @@ class EnquiryRepository:
         limit: int = 50,
         offset: int = 0,
     ):
-        query = select(self.model)
+        query = select(self.model).options(
+            joinedload(self.model.buyer), joinedload(self.model.seller)
+        )
         if business_id is not None:
             query = query.where(
                 or_(
@@ -79,6 +83,29 @@ class EnquiryRepository:
             self.model.status.in_(OPEN_STATUSES),
         )
         return db.scalars(query).first()
+
+    def notify_business(
+        self,
+        db: Session,
+        business_id: uuid.UUID,
+        event: NotificationEvent,
+        enquiry_id: uuid.UUID,
+    ) -> None:
+        """Queue a notification for every user of a business (no commit)."""
+        users = db.scalars(select(User).where(User.business_id == business_id))
+        for user in users:
+            db.add(
+                Notification(
+                    user_id=user.user_id, event_type=event, enquiry_id=enquiry_id
+                )
+            )
+
+    def has_pending_payment(self, db: Session, enquiry_id: uuid.UUID) -> bool:
+        query = select(Payment.payment_id).where(
+            Payment.enquiry_id == enquiry_id,
+            Payment.status == PaymentStatus.PENDING,
+        )
+        return db.scalars(query).first() is not None
 
     def create(self, db: Session, data: Dict[str, Any], commit: bool = True) -> Enquiry:
         enquiry = self.model(**data)

@@ -71,6 +71,12 @@ class UserPage(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
+class UserFilter(BaseModel):
+    role: UserRole | None = None
+    limit: int = Field(20, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)

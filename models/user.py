@@ -83,3 +83,8 @@ class User(TimestampMixin, Base):
     business = relationship(
         "Business", back_populates="user", foreign_keys=[business_id]
     )
+
+    @property
+    def role(self) -> UserRole:
+        """Same as user_role; lets services treat User and CurrentUser alike."""
+        return self.user_role

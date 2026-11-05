@@ -101,3 +101,7 @@ class Listing(TimestampMixin, Base):
 
     business = relationship("Business")
     location = relationship("Location")
+
+    @property
+    def business_name(self) -> str | None:
+        return self.business.public_name if self.business else None

@@ -49,11 +49,23 @@ class ListingUpdate(BaseModel):
     status: ListingStatus | None = None
 
 
+class ListingLocation(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    location_id: UUID
+    name: str
+    display_name: str | None = None
+    sub_county: str
+    county: str
+
+
 class ListingRead(ListingBase):
     model_config = ConfigDict(from_attributes=True)
 
     listing_id: UUID
     business_id: UUID
+    business_name: str | None = None
+    location: ListingLocation | None = None
     listing_type: ListingType
     quantity: float
     unit_price: float

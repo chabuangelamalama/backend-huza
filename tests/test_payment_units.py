@@ -6,7 +6,7 @@ import pytest
 
 from core.payment_config import MpesaSettings
 from models.business import PayoutNetwork
-from routers.payments import PayoutDetailsRequest
+from schemas.payment import PayoutDetailsRequest
 from schemas.payment import InitiatePaymentRequest, normalize_msisdn
 from services.money import compute_total, split_fee, whole_kes
 from services.mpesa import (

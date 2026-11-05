@@ -1,3 +1,4 @@
+import json
 import logging
 import threading
 import time
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from core.payment_config import MpesaSettings
 from models import Notification, Payment, PaymentEvent
-from models.business import ApprovalStatus
+from models.business import ApprovalStatus, BusinessRole
 from models.enquiry import EnquiryStatus
 from models.notification import NotificationEvent
 from models.payment import PaymentStatus, PayoutStatus
@@ -663,6 +664,29 @@ class PaymentService:
 
         self.db.commit()
 
+    def handle_raw_callback(
+        self,
+        kind: str,
+        reference_id: str,
+        token: str,
+        raw_body: bytes,
+    ) -> None:
+        """Parse a callback request body, then process it.
+
+        An empty body is Safaricom's reachability ping and is accepted.
+        """
+        payload: object = {}
+        if raw_body and raw_body.strip():
+            try:
+                payload = json.loads(raw_body)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                raise PaymentError(
+                    400, "invalid_callback", "Invalid callback JSON"
+                ) from None
+        if not isinstance(payload, dict):
+            raise PaymentError(400, "invalid_callback", "Invalid callback payload")
+        self.handle_callback(kind, reference_id, token, payload)
+
     def handle_callback(
         self,
         kind: str,
@@ -974,6 +998,23 @@ class PaymentService:
 
         return self._refresh_if_pending(payment), side
 
+    def list_my_payments(
+        self,
+        actor: User,
+        side: str | None,
+        payment_status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Payment], str]:
+        """Payments for the actor; with no side given, suppliers see seller-side."""
+        if side is None:
+            business = actor.business
+            is_supplier = (
+                business is not None and business.business_role == BusinessRole.SUPPLIER
+            )
+            side = "seller" if is_supplier else "buyer"
+        return self.my_payments(actor, side, payment_status, limit, offset), side
+
     def my_payments(
         self,
         actor: User,
@@ -1093,9 +1134,12 @@ class PaymentService:
         self,
         actor: User,
         payment_id: UUID,
-    ) -> Payment | None:
+    ) -> Payment:
         self._require_admin(actor)
-        return self.reconcile_payment(payment_id)
+        payment = self.reconcile_payment(payment_id)
+        if payment is None:
+            raise PaymentError(404, *_NOT_FOUND)
+        return payment
 
     def admin_events(
         self,

@@ -109,3 +109,7 @@ class Business(TimestampMixin, Base):
         uselist=False,
     )
     approved_by_user = relationship("User", foreign_keys=[approved_by])
+
+    @property
+    def public_name(self) -> str:
+        return self.display_name or self.business_legal_name

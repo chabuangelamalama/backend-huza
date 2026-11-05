@@ -1,10 +1,13 @@
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from models.business import Business
 from models.listing import Listing, ListingStatus, ListingType, Stream
 from models.location import Location
+
+
+_WITH_DETAILS = (joinedload(Listing.business), joinedload(Listing.location))
 
 
 class ListingRepository:
@@ -26,7 +29,7 @@ class ListingRepository:
         location_id: UUID | None = None,
         search: str | None = None,
     ) -> list[Listing]:
-        query = db.query(Listing)
+        query = db.query(Listing).options(*_WITH_DETAILS)
         if status:
             query = query.filter(Listing.status == status)
         if stream:
@@ -42,6 +45,7 @@ class ListingRepository:
     def get_by_business(self, db: Session, business_id: UUID) -> list[Listing]:
         return (
             db.query(Listing)
+            .options(*_WITH_DETAILS)
             .filter(Listing.business_id == business_id)
             .order_by(Listing.created_at.desc())
             .all()

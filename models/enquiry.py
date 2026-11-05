@@ -5,6 +5,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Numeric,
+    Text,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -69,6 +70,7 @@ class Enquiry(TimestampMixin, Base):
     unit_price = Column(Numeric(19, 4), nullable=False)
     total_amount = Column(Numeric(19, 4), nullable=False)
     failure_reason = Column(failure_reason_t, nullable=True)
+    message = Column(Text, nullable=True)
     first_response_at = timestamptz(nullable=True)
     accepted_at = timestamptz(nullable=True)
     closed_at = timestamptz(nullable=True)
