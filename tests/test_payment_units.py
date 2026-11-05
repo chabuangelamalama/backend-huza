@@ -327,3 +327,20 @@ def test_payout_details_default_to_mpesa_and_reject_other_networks():
     assert body.payout_network == PayoutNetwork.MPESA
     with pytest.raises(ValueError):
         PayoutDetailsRequest(payout_phone="0712345678", payout_network="AIRTEL")
+
+
+def test_status_read_treats_still_processing_as_pending():
+    def handler(request):
+        if request.url.path.endswith("/generate"):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        return httpx.Response(
+            200,
+            json={
+                "ResultCode": "4999",
+                "ResultDesc": "The transaction is still under processing",
+            },
+        )
+
+    result = client_for(handler).get_request_to_pay(CHECKOUT_ID)
+
+    assert result.status == "PENDING"

@@ -19,6 +19,7 @@ log = logging.getLogger("huza.mpesa")
 
 Product = Literal["collection", "disbursement"]
 EAT_TIMEZONE = timezone(timedelta(hours=3))
+STK_STILL_PROCESSING = 4999
 
 
 class MpesaError(Exception):
@@ -265,10 +266,12 @@ class MpesaClient:
 
         if result_code_int == 0:
             status = "SUCCESSFUL"
-        elif result_code_int is not None:
-            status = "FAILED"
-        else:
+        elif result_code_int is None or result_code_int == STK_STILL_PROCESSING:
+            # 4999 "The transaction is still under processing": the buyer may
+            # still be entering their PIN, so this is not a result yet.
             status = "PENDING"
+        else:
+            status = "FAILED"
 
         return MpesaResult(
             status=status,

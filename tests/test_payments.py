@@ -599,3 +599,91 @@ def test_failed_payout_can_be_retried_by_an_admin(svc, world, mpesa, session):
     send_b2c(svc, p, b2c_result("SFC_IC0003", "Operator does not exist."))
     retried = svc.initiate_payout(world["admin"], p.payment_id)
     assert retried.payout_status == PayoutStatus.PENDING
+
+
+def wrongly_failed(svc, world, mpesa):
+    """What happened on Render: a status check marked a live payment FAILED."""
+    p = pay(svc, world)
+    mpesa.settle("FAILED", "The transaction is still under processing")
+    svc.reconcile_payment(p.payment_id)
+    assert p.status == PaymentStatus.FAILED
+    return p
+
+
+def test_success_callback_after_a_wrong_failure_records_the_payment(
+    svc, world, mpesa, session
+):
+    p = wrongly_failed(svc, world, mpesa)
+    stock_before = world["listing"].quantity
+
+    send_callback(svc, p, stk_success(p))
+
+    session.expire_all()
+    p = session.get(Payment, p.payment_id)
+    assert p.status == PaymentStatus.SUCCESSFUL
+    assert p.mpesa_receipt_number == "UK5IR0ZYZO"
+    assert p.mpesa_merchant_request_id == "m-1"
+    assert p.failure_reason is None and not p.needs_review
+    assert session.get(type(world["enquiry"]), world["enquiry"].enquiry_id).status == (
+        EnquiryStatus.PAID
+    )
+    listing = session.get(type(world["listing"]), world["listing"].listing_id)
+    assert listing.quantity == stock_before - world["enquiry"].quantity
+    assert "PAYMENT_RECOVERED" in event_types(session, p.payment_id)
+
+
+def test_late_success_when_another_attempt_already_paid_is_flagged_for_refund(
+    svc, world, mpesa, session
+):
+    first = wrongly_failed(svc, world, mpesa)
+    mpesa.collections.clear()
+    fake_request_to_pay = mpesa.request_to_pay
+
+    def second_checkout_id(**kw):
+        fake_request_to_pay(**kw)
+        mpesa.collections["ws_CO_SECOND"] = mpesa.collections.pop(CHECKOUT_ID)
+        return "ws_CO_SECOND"
+
+    mpesa.request_to_pay = second_checkout_id
+    second = pay(svc, world)
+    mpesa.settle("SUCCESSFUL")
+    svc.reconcile_payment(second.payment_id)
+
+    send_callback(svc, first, stk_success(first, receipt="UK5LATE001"))
+
+    session.expire_all()
+    first = session.get(Payment, first.payment_id)
+    assert first.status == PaymentStatus.FAILED
+    assert first.needs_review
+    assert "UK5LATE001" in first.review_reason
+    assert session.get(Payment, second.payment_id).status == PaymentStatus.SUCCESSFUL
+
+
+def test_failure_callback_for_a_failed_payment_is_only_logged(
+    svc, world, mpesa, session
+):
+    p = wrongly_failed(svc, world, mpesa)
+    body = stk_success(p)
+    body["Body"]["stkCallback"]["ResultCode"] = 1032
+    body["Body"]["stkCallback"]["ResultDesc"] = "Request cancelled by user"
+
+    send_callback(svc, p, body)
+
+    session.expire_all()
+    p = session.get(Payment, p.payment_id)
+    assert p.status == PaymentStatus.FAILED and not p.needs_review
+    assert "LATE_CALLBACK_FAILED" in event_types(session, p.payment_id)
+
+
+def test_money_for_a_closed_enquiry_is_flagged_for_refund(svc, world, mpesa, session):
+    p = wrongly_failed(svc, world, mpesa)
+    world["enquiry"].status = EnquiryStatus.CANCELLED
+    world["enquiry"].failure_reason = "PRICE"
+    session.commit()
+
+    send_callback(svc, p, stk_success(p))
+
+    session.expire_all()
+    p = session.get(Payment, p.payment_id)
+    assert p.needs_review and "cancelled" in p.review_reason
+    assert not p.stock_deducted

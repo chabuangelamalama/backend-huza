@@ -158,7 +158,7 @@ class PaymentService:
         reason: str,
     ) -> None:
         payment.needs_review = True
-        payment.review_reason = safe_reason(reason)
+        payment.review_reason = reason[:200]
         self._event(
             "PAYMENT_NEEDS_REVIEW",
             payment_id=payment.payment_id,
@@ -411,6 +411,7 @@ class PaymentService:
         Whoever takes the lock second sees the other's result and stops, so a
         payment is settled (and stock deducted) only once.
         """
+        self.db.flush()  # keep this request's unsaved changes across the re-read
         repo.get_payment(self.db, payment.payment_id, lock=True)
         return payment.status == PaymentStatus.PENDING
 
@@ -421,9 +422,25 @@ class PaymentService:
         received_amount: Decimal,
         *,
         receipt_is_real: bool = True,
+        recovering: bool = False,
     ) -> None:
-        """Mark payment successful, record audit event, and deduct listing stock."""
-        if not self._lock_if_pending(payment):
+        """Mark payment successful, record audit event, and deduct listing stock.
+
+        recovering: Safaricom confirmed a payment we had marked FAILED.
+        """
+        settleable = self._lock_if_pending(payment) or (
+            recovering
+            and payment.status in (PaymentStatus.FAILED, PaymentStatus.CANCELLED)
+        )
+        other = repo.successful_payment_for_enquiry(self.db, payment.enquiry_id)
+        if settleable and other is not None and other.payment_id != payment.payment_id:
+            self._flag_review(
+                payment,
+                f"Enquiry already paid by another attempt. Refund M-Pesa receipt {receipt}.",
+            )
+            self.db.commit()
+            return
+        if not settleable:
             # Already settled by the other path. Keep the real M-Pesa receipt if
             # the first settle only had the checkout request ID.
             if (
@@ -458,6 +475,12 @@ class PaymentService:
                 self._flag_review(
                     payment,
                     "Payment succeeded but its enquiry could not be found",
+                )
+            elif enquiry.status not in (EnquiryStatus.AGREED, EnquiryStatus.PAID):
+                self._flag_review(
+                    payment,
+                    f"Payment arrived for an enquiry that is "
+                    f"{enquiry.status.value.lower()}. Refund M-Pesa receipt {receipt}.",
                 )
             else:
                 if enquiry.status == EnquiryStatus.AGREED:
@@ -798,13 +821,37 @@ class PaymentService:
             self.db.commit()
             return
 
+        recovering = False
         if payment.status in (PaymentStatus.FAILED, PaymentStatus.CANCELLED):
-            self._flag_review(
-                payment,
-                "A callback was received for a payment already marked failed or cancelled.",
+            if str(result_code).strip() != "0":
+                self._event(
+                    "LATE_CALLBACK_FAILED",
+                    payment_id=payment.payment_id,
+                    result_code=result_code,
+                    reason=result_description,
+                )
+                self.db.commit()
+                return
+            # Safaricom says the buyer paid after we had marked this failed
+            # (e.g. a status check gave up too early). The money is real, so
+            # record it rather than drop it.
+            receipt = self._callback_metadata(callback).get("MpesaReceiptNumber")
+            if repo.successful_payment_for_enquiry(self.db, payment.enquiry_id):
+                self._flag_review(
+                    payment,
+                    f"Paid after being marked failed, but the enquiry was already "
+                    f"paid by another attempt. Refund M-Pesa receipt {receipt}.",
+                )
+                self.db.commit()
+                return
+            self._event(
+                "PAYMENT_RECOVERED",
+                payment_id=payment.payment_id,
+                previous_status=payment.status,
+                previous_reason=payment.failure_reason,
+                receipt=receipt,
             )
-            self.db.commit()
-            return
+            recovering = True
 
         try:
             result_code_int = int(result_code)
@@ -886,6 +933,7 @@ class PaymentService:
             payment=payment,
             receipt=str(receipt),
             received_amount=received_amount,
+            recovering=recovering,
         )
 
         log.info(
